@@ -1,0 +1,1452 @@
+{
+  "scripts": {
+    "ertupw4o5": {
+      "id": "ertupw4o5",
+      "name": "baithek12.py",
+      "content": "import json\nimport aiohttp\nimport asyncio\nimport time\nimport os\nfrom datetime import datetime\nfrom concurrent.futures import ThreadPoolExecutor\nimport telebot\n\nexecutor = ThreadPoolExecutor(max_workers=10000)\nuser_conversations = {}\n\ndef load_conversations():\n    global user_conversations\n    try:\n        with open('user_conversations.json', 'r') as f:\n            user_conversations = json.load(f)\n    except FileNotFoundError:\n        user_conversations = {}\n\nload_conversations()\n\ndef save_conversations():\n    with open('user_conversations.json', 'w') as f:\n        json.dump(user_conversations, f, indent=4)\n\napi_url = 'https://baithek.com/chatbee/health_ai/ai_vision.php'\nAPI_TOKEN = '7239529576:AAHPi-ynvwdDKvDtXTyzwI2Cjpg60N5KMP8'\nbot = telebot.TeleBot(API_TOKEN)\n\n# \u062e\u0631\u064a\u0637\u0629 \u0627\u0645\u062a\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u0645\u0644\u0641\u0627\u062a \u0644\u0644\u063a\u0627\u062a \u0627\u0644\u0628\u0631\u0645\u062c\u0629\nlanguage_map = {\n    'python': ['.py', 'python', '```py', '```python'],\n    'javascript': ['.js', 'javascript', '```js', '```javascript'],\n    'java': ['.java', 'java', '```java'],\n    'c': ['.c', 'c language', '```c'],\n    'cpp': ['.cpp', 'c++', '```cpp', '```c++'],\n    'csharp': ['.cs', 'c#', '```cs', '```c#'],\n    'php': ['.php', 'php', '```php'],\n    'ruby': ['.rb', 'ruby', '```rb', '```ruby'],\n    'go': ['.go', 'golang', '```go'],\n    'swift': ['.swift', 'swift', '```swift'],\n    'kotlin': ['.kt', 'kotlin', '```kt', '```kotlin'],\n    'typescript': ['.ts', 'typescript', '```ts', '```typescript'],\n    'html': ['.html', 'html', '```html'],\n    'css': ['.css', 'css', '```css'],\n    'sql': ['.sql', 'sql', '```sql'],\n    'bash': ['.sh', 'bash', 'shell', '```sh', '```bash'],\n    'json': ['.json', 'json', '```json'],\n    'xml': ['.xml', 'xml', '```xml'],\n    'markdown': ['.md', 'markdown', '```md', '```markdown']\n}\n\nasync def send_request(url, data):\n    headers = {\n        'Host': 'baithek.com',\n        'Content-Type': 'application/json',\n        'User-Agent': 'okhttp/4.9.2'\n    }\n    async with aiohttp.ClientSession() as session:\n        try:\n            async with session.post(url, headers=headers, data=data) as response:\n                response_text = await response.text()\n                response.raise_for_status()\n                return response_text\n        except aiohttp.ClientError:\n            return None\n\nasync def ask_gpt(user_id, msg):\n    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')\n    conversation_history = user_conversations.get(user_id, {}).get('history', '')\n    conversation_history += f\"User: {msg} ({current_time})\\n\"\n    conversation_data = {\n        'name': 'Usama',\n        'messages': [{'role': 'user', 'content': f\"{conversation_history}\\nCurrent time: {current_time}\"}]\n    }\n    data_json = json.dumps(conversation_data)\n    response = None\n    while response is None:\n        response = await send_request(api_url, data_json)\n        if response is None:\n            await asyncio.sleep(2)\n    try:\n        result_message = json.loads(response)['choices'][0]['message']['content']\n    except (IndexError, KeyError, json.JSONDecodeError):\n        result_message = \"\u062d\u062f\u062b \u062e\u0637\u0623 \u0623\u062b\u0646\u0627\u0621 \u0645\u0639\u0627\u0644\u062c\u0629 \u0637\u0644\u0628\u0643.\"\n    \n    user_conversations[user_id] = {'history': conversation_history + result_message + \"\\n\"}\n    save_conversations()\n    return result_message\n\ndef split_long_message(message, max_length=4000):\n    parts = []\n    while len(message) > max_length:\n        split_point = message.rfind('\\n', 0, max_length)\n        if split_point == -1:\n            split_point = max_length\n        parts.append(message[:split_point].strip())\n        message = message[split_point:].strip()\n    parts.append(message)\n    return parts\n\ndef detect_language(code_block):\n    \"\"\"\u0627\u0643\u062a\u0634\u0641 \u0644\u063a\u0629 \u0627\u0644\u0628\u0631\u0645\u062c\u0629 \u0645\u0646 \u0627\u0644\u0639\u0644\u0627\u0645\u0627\u062a \u0623\u0648 \u0645\u062d\u062a\u0648\u0649 \u0627\u0644\u0643\u0648\u062f\"\"\"\n    # \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u0639\u0644\u0627\u0645\u0627\u062a \u0644\u063a\u0629 \u0627\u0644\u0628\u0631\u0645\u062c\u0629 \u0623\u0648\u0644\u0627\u064b\n    for lang, markers in language_map.items():\n        for marker in markers:\n            if marker in code_block.lower():\n                return lang\n    \n    # \u0625\u0630\u0627 \u0644\u0645 \u064a\u062a\u0645 \u0627\u0644\u0639\u062b\u0648\u0631 \u0639\u0644\u0649 \u0639\u0644\u0627\u0645\u0627\u062a\u060c \u062d\u0627\u0648\u0644 \u0627\u0644\u062a\u062e\u0645\u064a\u0646 \u0645\u0646 \u0627\u0644\u0645\u062d\u062a\u0648\u0649\n    if '<?php' in code_block: return 'php'\n    if '#include' in code_block and 'using namespace' not in code_block: return 'c'\n    if '#include' in code_block and 'using namespace' in code_block: return 'cpp'\n    if 'def ' in code_block or 'import ' in code_block: return 'python'\n    if 'function ' in code_block or 'const ' in code_block or 'let ' in code_block: return 'javascript'\n    if 'public class ' in code_block: return 'java'\n    if '<html' in code_block: return 'html'\n    \n    return 'txt'  # \u0627\u0641\u062a\u0631\u0627\u0636\u064a \u0645\u0644\u0641 \u0646\u0635\u064a\n\ndef prepare_code_file(code_block):\n    \"\"\"\u062c\u0647\u0632 \u0627\u0644\u0643\u0648\u062f \u0644\u0625\u0631\u0633\u0627\u0644\u0647 \u0643\u0645\u0644\u0641 \u0628\u062a\u0646\u0638\u064a\u0641 \u0627\u0644\u0639\u0644\u0627\u0645\u0627\u062a \u0648\u0627\u0643\u062a\u0634\u0627\u0641 \u0627\u0644\u0644\u063a\u0629\"\"\"\n    # \u0625\u0632\u0627\u0644\u0629 \u0639\u0644\u0627\u0645\u0627\u062a \u0627\u0644\u0643\u0648\u062f \u0625\u0630\u0627 \u0643\u0627\u0646\u062a \u0645\u0648\u062c\u0648\u062f\u0629\n    if code_block.startswith('```') and code_block.endswith('```'):\n        code_block = code_block[3:-3].strip()\n        # \u0625\u0632\u0627\u0644\u0629 \u0645\u0639\u0631\u0641 \u0627\u0644\u0644\u063a\u0629 \u0645\u0646 \u0627\u0644\u0633\u0637\u0631 \u0627\u0644\u0623\u0648\u0644 \u0625\u0630\u0627 \u0643\u0627\u0646 \u0645\u0648\u062c\u0648\u062f\u0627\u064b\n        first_newline = code_block.find('\\n')\n        if first_newline != -1:\n            first_line = code_block[:first_newline].strip()\n            if first_line.isalpha():  # \u0625\u0630\u0627 \u0643\u0627\u0646\u062a \u0643\u0644\u0645\u0629 \u0648\u0627\u062d\u062f\u0629 (\u0639\u0644\u0649 \u0627\u0644\u0623\u0631\u062c\u062d \u0645\u0639\u0631\u0641 \u0627\u0644\u0644\u063a\u0629)\n                code_block = code_block[first_newline:].strip()\n    \n    language = detect_language(code_block)\n    extension = language_map.get(language, ['.txt'])[0]\n    filename = f'code_{int(time.time())}{extension}'\n    \n    return filename, code_block\n\ndef send_code_as_file(chat_id, code_block):\n    \"\"\"\u0623\u0631\u0633\u0644 \u0627\u0644\u0643\u0648\u062f \u0643\u0645\u0644\u0641 \u0645\u0639 \u0627\u0644\u062a\u0639\u0627\u0645\u0644 \u0645\u0639 \u0627\u0644\u0623\u062e\u0637\u0627\u0621\"\"\"\n    try:\n        filename, clean_code = prepare_code_file(code_block)\n        with open(filename, 'w', encoding='utf-8') as f:\n            f.write(clean_code)\n        with open(filename, 'rb') as f:\n            bot.send_document(chat_id, f)\n        os.remove(filename)  # \u0627\u062d\u0630\u0641 \u0627\u0644\u0645\u0644\u0641 \u0628\u0639\u062f \u0627\u0644\u0625\u0631\u0633\u0627\u0644\n        return True\n    except Exception as e:\n        print(f\"Error sending file: {e}\")\n        return False\n\n@bot.message_handler(commands=['start'])\ndef send_welcome(message):\n    bot.reply_to(message, '<b>\ud83e\udd16 \u00a6 \u0623\u0647\u0644\u0627\u064b \u0628\u0643 \u0639\u0632\u064a\u0632\u064a\u060c \u0623\u0646\u0627 \u0628\u0648\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a.</b>\\n<b>\u26a1\ufe0f \u00a6 \u0647\u0644 \u064a\u0645\u0643\u0646\u0646\u064a \u0645\u0633\u0627\u0639\u062f\u062a\u0643\u061f\\n \u0645\u0637\u0648\u0631 \u0628\u0648\u062a:@Cornerdzz</b>', parse_mode='HTML')\n\n@bot.message_handler(func=lambda message: True)\ndef handle_message(message):\n    user_id = message.chat.id\n    msg = message.text\n    future = executor.submit(asyncio.run, ask_gpt(user_id, msg))\n    response_message = future.result()\n    \n    if '```' in response_message:\n        if len(response_message) > 4000:\n            # \u062d\u0627\u0648\u0644 \u0625\u0631\u0633\u0627\u0644 \u0627\u0644\u0643\u0648\u062f \u0643\u0645\u0644\u0641 \u0623\u0648\u0644\u0627\u064b\n            if not send_code_as_file(user_id, response_message):\n                # \u0625\u0630\u0627 \u0641\u0634\u0644 \u0625\u0631\u0633\u0627\u0644 \u0627\u0644\u0645\u0644\u0641\u060c \u0623\u0631\u0633\u0644 \u0643\u0631\u0633\u0627\u0644\u0629 \u0645\u0642\u0633\u0645\u0629\n                bot.send_message(user_id, \"\u0627\u0644\u0643\u0648\u062f \u0637\u0648\u064a\u0644 \u062c\u062f\u0627\u064b\u060c \u0625\u0644\u064a\u0643 \u0627\u0644\u062c\u0632\u0621 \u0627\u0644\u0623\u0648\u0644 \u0645\u0646\u0647:\")\n                code_parts = split_long_message(response_message)\n                for part in code_parts:\n                    bot.send_message(user_id, f\"<pre>{part}</pre>\", parse_mode='HTML')\n        else:\n            bot.send_message(user_id, f\"<pre>{response_message}</pre>\", parse_mode='HTML')\n    else:\n        message_parts = split_long_message(response_message)\n        for part in message_parts:\n            bot.send_message(user_id, part, parse_mode='HTML')\n\nwhile True:\n    try:\n        bot.polling(non_stop=True)\n    except Exception as e:\n        print(f\"Bot error: {e}\")\n        time.sleep(5)",
+      "createdAt": "2026-07-05T09:09:39.595Z",
+      "updatedAt": "2026-07-05T09:33:53.077Z",
+      "size": 7144,
+      "status": "idle",
+      "autoInstall": true,
+      "lastRun": "2026-07-05T09:51:52.910Z"
+    },
+    "dniscd0l4": {
+      "id": "dniscd0l4",
+      "name": "istidafa7_by_moon.py",
+      "content": "import subprocess\nimport os\nimport asyncio\nimport importlib\nfrom aiogram import Bot, Dispatcher, types\nfrom aiogram.types import ReplyKeyboardMarkup, KeyboardButton\nfrom aiogram.filters import Command\nfrom flask import Flask\nfrom threading import Thread\nimport requests\nimport time\n\n# ==================== CONFIGURATION DU BOT ====================\nTOKEN = \"8958637473:AAFCOf83czhAaIF1hInN7vZxc908ZJ0dhDY\"\nBASE_DIR = \"scripts\"\nprocesses = {}\nuser_states = {}\nbanned_users = set()\nADMINS = [1726923679]  # IDs des administrateurs\nBOT_MODE = \"public\"  # Peut \u00eatre \"public\" ou \"private\"\n\n# ==================== CONFIGURATION KEEP ALIVE ====================\nKEEP_ALIVE_URL = \"https://64b7f441-1e0c-4fea-8c2a-daf518f3f89c.e1-eu-west-cdp.choreoapps.dev/\"\nKEEP_ALIVE_INTERVAL = 20  # Secondes entre chaque requ\u00eate keep-alive\nkeep_alive_running = True\n\n# \ud83d\udcc2 Cr\u00e9er le dossier des scripts s'il n'existe pas\nos.makedirs(BASE_DIR, exist_ok=True)\n\nbot = Bot(token=TOKEN)\ndp = Dispatcher()\n\n# ==================== SERVEUR FLASK POUR KEEP ALIVE ====================\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    return \"Bot is alive and running!\"\n\n@app.route('/health')\ndef health():\n    return \"OK\", 200\n\ndef run_flask():\n    \"\"\"Fonction pour ex\u00e9cuter le serveur Flask\"\"\"\n    app.run(host='0.0.0.0', port=8080)\n\n# ==================== FONCTION KEEP ALIVE ====================\ndef start_flask_server():\n    \"\"\"D\u00e9marre le serveur Flask dans un thread s\u00e9par\u00e9\"\"\"\n    flask_thread = Thread(target=run_flask, daemon=True)\n    flask_thread.start()\n    print(\"\u2705 Serveur Flask d\u00e9marr\u00e9 sur le port 8080\")\n\nasync def keep_alive_task():\n    \"\"\"T\u00e2che asynchrone pour envoyer des requ\u00eates keep-alive p\u00e9riodiques\"\"\"\n    global keep_alive_running\n    max_wait = 60\n    wait_time = 1\n    \n    print(\"\ud83d\udd04 Service Keep-Alive d\u00e9marr\u00e9\")\n    \n    while keep_alive_running:\n        try:\n            response = requests.get(KEEP_ALIVE_URL, timeout=10)\n            print(f\"\ud83d\udce1 Keep-Alive - Statut: {response.status_code}\")\n            \n            if response.status_code == 200:\n                print(\"\u2705 Requ\u00eate Keep-Alive r\u00e9ussie!\")\n                wait_time = 1\n            else:\n                print(f\"\u26a0\ufe0f Keep-Alive - Code inattendu: {response.status_code}\")\n            \n            await asyncio.sleep(KEEP_ALIVE_INTERVAL)\n            \n        except requests.exceptions.RequestException as e:\n            print(f\"\u274c Erreur Keep-Alive: {e}\")\n            print(f\"\u23f3 Nouvelle tentative dans {wait_time} seconde(s)...\")\n            await asyncio.sleep(wait_time)\n            wait_time = min(wait_time * 2, max_wait)\n        except Exception as e:\n            print(f\"\ud83d\udca5 Erreur inattendue Keep-Alive: {e}\")\n            await asyncio.sleep(KEEP_ALIVE_INTERVAL)\n\n# ==================== INTERFACE UTILISATEUR ====================\n# \ud83c\udf9b\ufe0f Clavier principal pour les utilisateurs normaux\nmain_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"\u2795 Ajouter un script\")],\n        [KeyboardButton(text=\"\u25b6\ufe0f Ex\u00e9cuter un script\")],\n        [KeyboardButton(text=\"\ud83d\udcdc Liste des scripts\")],\n        [KeyboardButton(text=\"\u274c Arr\u00eater et supprimer un script\")],\n    ],\n    resize_keyboard=True\n)\n\n# \ud83c\udf9b\ufe0f Clavier principal pour les admins\nadmin_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"\u2795 Ajouter un script\")],\n        [KeyboardButton(text=\"\u25b6\ufe0f Ex\u00e9cuter un script\")],\n        [KeyboardButton(text=\"\ud83d\udcdc Liste des scripts\")],\n        [KeyboardButton(text=\"\u274c Arr\u00eater et supprimer un script\")],\n        [KeyboardButton(text=\"\ud83d\udc51 Panel admin\")],\n    ],\n    resize_keyboard=True\n)\n\n# \ud83c\udf9b\ufe0f Panel admin\nadmin_panel_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"\ud83d\udd12 Bannir un utilisateur\"), KeyboardButton(text=\"\ud83d\udd13 D\u00e9bannir un utilisateur\")],\n        [KeyboardButton(text=\"\ud83d\udcbe Sauvegarder scripts utilisateur\"), KeyboardButton(text=\"\ud83d\udccb Liste de tous les scripts\")],\n        [KeyboardButton(text=\"\ud83d\uded1 Arr\u00eater/supprimer script utilisateur\")],\n        [KeyboardButton(text=\"\ud83d\udd10 Mode priv\u00e9\"), KeyboardButton(text=\"\ud83c\udf0d Mode public\")],\n        [KeyboardButton(text=\"\ud83d\udcbb Envoyer commande terminal\")],\n        [KeyboardButton(text=\"\ud83d\udd04 \u00c9tat Keep-Alive\"), KeyboardButton(text=\"\u2699\ufe0f Configurer Keep-Alive\")],\n        [KeyboardButton(text=\"\u2b05\ufe0f Retour au menu principal\")],\n    ],\n    resize_keyboard=True\n)\n\n# \ud83c\udf9b\ufe0f Clavier pour la saisie manuelle des commandes\ncommand_input_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"saisir la commande manuellement\")],\n        [KeyboardButton(text=\"\u2b05\ufe0f Annuler\")],\n    ],\n    resize_keyboard=True\n)\n\n# \ud83c\udf9b\ufe0f Clavier pour la configuration Keep-Alive\nkeep_alive_config_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"\u25b6\ufe0f D\u00e9marrer Keep-Alive\"), KeyboardButton(text=\"\u23f8\ufe0f Arr\u00eater Keep-Alive\")],\n        [KeyboardButton(text=\"\u23f1\ufe0f Changer intervalle\")],\n        [KeyboardButton(text=\"\u2b05\ufe0f Retour au panel admin\")],\n    ],\n    resize_keyboard=True\n)\n\n# ==================== COMMANDES DU BOT ====================\n@dp.message(Command(\"start\"))\nasync def start(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    if message.from_user.id in banned_users:\n        await message.reply(\"\ud83d\udeab Vous \u00eates banni de ce bot.\")\n        return\n    \n    keyboard = admin_keyboard if message.from_user.id in ADMINS else main_keyboard\n    await message.reply(\"\ud83d\udc4b Bonjour ! Choisissez une action :\", reply_markup=keyboard)\n\n# ==================== COMMANDES ADMIN ====================\n@dp.message(lambda message: message.text == \"\ud83d\udc51 Panel admin\" and message.from_user.id in ADMINS)\nasync def admin_panel(message: types.Message):\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n# ==================== GESTION KEEP-ALIVE ====================\n@dp.message(lambda message: message.text == \"\ud83d\udd04 \u00c9tat Keep-Alive\" and message.from_user.id in ADMINS)\nasync def keep_alive_status(message: types.Message):\n    global keep_alive_running\n    status = \"\ud83d\udfe2 ACTIF\" if keep_alive_running else \"\ud83d\udd34 INACTIF\"\n    await message.reply(\n        f\"\ud83d\udcca \u00c9tat du service Keep-Alive:\\n\"\n        f\"Statut: {status}\\n\"\n        f\"URL cible: {KEEP_ALIVE_URL}\\n\"\n        f\"Intervalle: {KEEP_ALIVE_INTERVAL} secondes\\n\"\n        f\"Port Flask: 8080\",\n        reply_markup=admin_panel_keyboard\n    )\n\n@dp.message(lambda message: message.text == \"\u2699\ufe0f Configurer Keep-Alive\" and message.from_user.id in ADMINS)\nasync def keep_alive_config(message: types.Message):\n    await message.reply(\"\u2699\ufe0f Configuration du service Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message(lambda message: message.text == \"\u25b6\ufe0f D\u00e9marrer Keep-Alive\" and message.from_user.id in ADMINS)\nasync def start_keep_alive(message: types.Message):\n    global keep_alive_running\n    if not keep_alive_running:\n        keep_alive_running = True\n        asyncio.create_task(keep_alive_task())\n        await message.reply(\"\u2705 Service Keep-Alive d\u00e9marr\u00e9 avec succ\u00e8s!\")\n    else:\n        await message.reply(\"\u2139\ufe0f Le service Keep-Alive est d\u00e9j\u00e0 en cours d'ex\u00e9cution.\")\n    await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message(lambda message: message.text == \"\u23f8\ufe0f Arr\u00eater Keep-Alive\" and message.from_user.id in ADMINS)\nasync def stop_keep_alive(message: types.Message):\n    global keep_alive_running\n    if keep_alive_running:\n        keep_alive_running = False\n        await message.reply(\"\u23f8\ufe0f Service Keep-Alive arr\u00eat\u00e9. (Les requ\u00eates s'arr\u00eateront apr\u00e8s la prochaine it\u00e9ration)\")\n    else:\n        await message.reply(\"\u2139\ufe0f Le service Keep-Alive est d\u00e9j\u00e0 arr\u00eat\u00e9.\")\n    await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message(lambda message: message.text == \"\u23f1\ufe0f Changer intervalle\" and message.from_user.id in ADMINS)\nasync def change_keep_alive_interval(message: types.Message):\n    user_states[message.from_user.id] = \"keep_alive_interval\"\n    await message.reply(\n        \"\ud83d\udcdd Entrez le nouvel intervalle en secondes (minimum 30 secondes):\",\n        reply_markup=command_input_keyboard\n    )\n\n# ==================== AUTRES COMMANDES ADMIN ====================\n@dp.message(lambda message: message.text == \"\ud83d\udcbb Envoyer commande terminal\" and message.from_user.id in ADMINS)\nasync def send_terminal_command(message: types.Message):\n    user_states[message.from_user.id] = \"terminal_command\"\n    await message.reply(\"\ud83d\udcdd Entrez la commande \u00e0 ex\u00e9cuter dans le terminal:\", reply_markup=command_input_keyboard)\n\n# Gestion des commandes terminal\n@dp.message(lambda message: user_states.get(message.from_user.id) == \"terminal_command\" and message.from_user.id in ADMINS)\nasync def handle_terminal_command(message: types.Message):\n    if message.text == \"\u2b05\ufe0f Annuler\":\n        user_states.pop(message.from_user.id, None)\n        await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n        return\n    \n    if message.text == \"saisir la commande manuellement\":\n        user_states[message.from_user.id] = \"manual_command_input\"\n        await message.reply(\"\ud83d\udcdd Entrez maintenant la commande \u00e0 ex\u00e9cuter:\")\n        return\n    \n    command = message.text\n    await message.reply(f\"\u2699\ufe0f Ex\u00e9cution de la commande: `{command}`\", parse_mode=\"Markdown\")\n    \n    try:\n        process = await asyncio.create_subprocess_shell(\n            command,\n            stdout=subprocess.PIPE,\n            stderr=subprocess.PIPE\n        )\n        \n        stdout, stderr = await process.communicate()\n        \n        if stdout:\n            output = stdout.decode()\n            if len(output) > 4000:\n                output = output[:4000] + \"\\n... (sortie tronqu\u00e9e)\"\n            await message.reply(f\"\ud83d\udce4 Sortie:\\n```\\n{output}\\n```\", parse_mode=\"Markdown\")\n        \n        if stderr:\n            error = stderr.decode()\n            if len(error) > 4000:\n                error = error[:4000] + \"\\n... (erreur tronqu\u00e9e)\"\n            await message.reply(f\"\u26a0\ufe0f Erreur:\\n```\\n{error}\\n```\", parse_mode=\"Markdown\")\n        \n        if process.returncode == 0:\n            await message.reply(\"\u2705 Commande ex\u00e9cut\u00e9e avec succ\u00e8s!\")\n        else:\n            await message.reply(f\"\u274c Commande termin\u00e9e avec le code de sortie: {process.returncode}\")\n    \n    except Exception as e:\n        await message.reply(f\"\u26a0\ufe0f Erreur lors de l'ex\u00e9cution de la commande: {str(e)}\")\n    \n    user_states.pop(message.from_user.id, None)\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n# Gestion de l'intervalle Keep-Alive\n@dp.message(lambda message: user_states.get(message.from_user.id) == \"keep_alive_interval\" and message.from_user.id in ADMINS)\nasync def handle_keep_alive_interval(message: types.Message):\n    global KEEP_ALIVE_INTERVAL\n    \n    if message.text == \"\u2b05\ufe0f Annuler\":\n        user_states.pop(message.from_user.id, None)\n        await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n        return\n    \n    try:\n        new_interval = int(message.text)\n        if new_interval < 30:\n            await message.reply(\"\u26a0\ufe0f L'intervalle minimum est de 30 secondes. Veuillez entrer une valeur \u2265 30.\")\n            return\n        \n        KEEP_ALIVE_INTERVAL = new_interval\n        await message.reply(f\"\u2705 Intervalle Keep-Alive modifi\u00e9 avec succ\u00e8s: {new_interval} secondes\")\n    except ValueError:\n        await message.reply(\"\u26a0\ufe0f Veuillez entrer un nombre valide de secondes.\")\n    \n    user_states.pop(message.from_user.id, None)\n    await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message(lambda message: message.text == \"\ud83d\udd10 Mode priv\u00e9\" and message.from_user.id in ADMINS)\nasync def set_private_mode(message: types.Message):\n    global BOT_MODE\n    BOT_MODE = \"private\"\n    await message.reply(\"\u2705 Le bot est maintenant en mode priv\u00e9 (admins seulement)\")\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n@dp.message(lambda message: message.text == \"\ud83c\udf0d Mode public\" and message.from_user.id in ADMINS)\nasync def set_public_mode(message: types.Message):\n    global BOT_MODE\n    BOT_MODE = \"public\"\n    await message.reply(\"\u2705 Le bot est maintenant en mode public (tout le monde)\")\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n@dp.message(lambda message: message.text == \"\ud83d\udccb Liste de tous les scripts\" and message.from_user.id in ADMINS)\nasync def list_all_scripts(message: types.Message):\n    MAX_MESSAGE_LENGTH = 4000\n    \n    text = \"\ud83d\udcdc Liste des scripts de tous les utilisateurs:\\n\"\n    messages = [text]\n    current_length = len(text)\n    \n    for user_id in os.listdir(BASE_DIR):\n        user_folder = os.path.join(BASE_DIR, str(user_id))\n        if os.path.isdir(user_folder):\n            scripts = os.listdir(user_folder)\n            user_text = f\"\\n\ud83d\udc64 {user_id}:\\n\"\n            \n            for script in scripts:\n                status = \"\ud83d\udfe2 Actif\" if (int(user_id), script) in processes and processes[(int(user_id), script)].returncode is None else \"\ud83d\udd34 Arr\u00eat\u00e9\"\n                script_line = f\" - {script}: {status}\\n\"\n                \n                if current_length + len(user_text) + len(script_line) > MAX_MESSAGE_LENGTH:\n                    messages.append(\"\ud83d\udcdc Liste des scripts (suite):\\n\")\n                    current_length = len(messages[-1])\n                \n                messages[-1] += user_text + script_line\n                current_length += len(user_text) + len(script_line)\n                user_text = \"\"\n    \n    for msg in messages:\n        await message.reply(msg)\n    \n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n@dp.message(lambda message: message.text == \"\ud83d\udd12 Bannir un utilisateur\" and message.from_user.id in ADMINS)\nasync def ban_user_prompt(message: types.Message):\n    user_states[message.from_user.id] = \"ban_user\"\n    await message.reply(\"\ud83d\udcdd Envoyez l'ID de l'utilisateur \u00e0 bannir:\")\n\n@dp.message(lambda message: message.text == \"\ud83d\udd13 D\u00e9bannir un utilisateur\" and message.from_user.id in ADMINS)\nasync def unban_user_prompt(message: types.Message):\n    user_states[message.from_user.id] = \"unban_user\"\n    await message.reply(\"\ud83d\udcdd Envoyez l'ID de l'utilisateur \u00e0 d\u00e9bannir:\")\n\n@dp.message(lambda message: message.text == \"\ud83d\udcbe Sauvegarder scripts utilisateur\" and message.from_user.id in ADMINS)\nasync def save_user_prompt(message: types.Message):\n    user_states[message.from_user.id] = \"save_user\"\n    await message.reply(\"\ud83d\udcdd Envoyez l'ID de l'utilisateur dont vous voulez sauvegarder les scripts:\")\n\n@dp.message(lambda message: message.text == \"\ud83d\uded1 Arr\u00eater/supprimer script utilisateur\" and message.from_user.id in ADMINS)\nasync def admin_stop_script_prompt(message: types.Message):\n    user_states[message.from_user.id] = \"admin_stop_script_user\"\n    await message.reply(\"\ud83d\udcdd Envoyez l'ID de l'utilisateur dont vous voulez arr\u00eater/supprimer les scripts:\")\n\n# ==================== COMMANDES UTILISATEUR ====================\n@dp.message(lambda message: message.text == \"\u2795 Ajouter un script\")\nasync def prompt_add_script(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    if message.from_user.id in banned_users:\n        await message.reply(\"\ud83d\udeab Vous \u00eates banni de ce bot.\")\n        return\n    \n    user_states[message.from_user.id] = \"ajout_script\"\n    await message.reply(\"\ud83d\udce4 Envoyez-moi un fichier **.py** \u00e0 ajouter.\")\n\n@dp.message(lambda message: message.document and user_states.get(message.from_user.id) == \"ajout_script\")\nasync def handle_script_upload(message: types.Message):\n    user_id = message.from_user.id\n\n    if user_id in banned_users:\n        await message.reply(\"\ud83d\udeab Vous \u00eates banni de ce bot.\")\n        return\n\n    document = message.document\n    if not document.file_name.endswith(\".py\"):\n        await message.reply(\"\u26a0\ufe0f Seuls les fichiers `.py` sont accept\u00e9s.\")\n        return\n\n    user_folder = os.path.join(BASE_DIR, str(user_id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    if user_id not in ADMINS:\n        existing_files = os.listdir(user_folder)\n        if len(existing_files) >= 4:\n            await message.reply(\"\u26a0\ufe0f Vous ne pouvez pas avoir plus de 4 scripts. Supprimez-en un d'abord.\")\n            return\n\n    file_path = os.path.join(user_folder, document.file_name)\n    file = await bot.get_file(document.file_id)\n    await bot.download_file(file.file_path, file_path)\n\n    await message.reply(f\"\u2705 Le script **{document.file_name}** a \u00e9t\u00e9 ajout\u00e9 avec succ\u00e8s!\")\n    user_states.pop(user_id, None)\n\n# Fonction pour v\u00e9rifier et installer les biblioth\u00e8ques\ndef check_and_install_libraries(file_path):\n    with open(file_path, 'r') as file:\n        script_content = file.read()\n\n    imports = [line for line in script_content.splitlines() if line.startswith(\"import\") or line.startswith(\"from\")]\n    missing_libraries = []\n\n    for imp in imports:\n        try:\n            if imp.startswith(\"import\"):\n                module = imp.split()[1]\n                importlib.import_module(module)\n            elif imp.startswith(\"from\"):\n                module = imp.split()[1]\n                importlib.import_module(module)\n        except ImportError:\n            module = imp.split()[1]\n            missing_libraries.append(module)\n\n    if missing_libraries:\n        for lib in missing_libraries:\n            subprocess.run([\"pip\", \"install\", lib])\n\n    return missing_libraries\n\n@dp.message(lambda message: message.text == \"\u274c Arr\u00eater et supprimer un script\")\nasync def stop_and_delete_script(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    user_id = message.from_user.id\n    user_states[user_id] = \"suppression\"\n\n    user_folder = os.path.join(BASE_DIR, str(user_id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    files = os.listdir(user_folder)\n    if not files:\n        await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9 \u00e0 supprimer.\")\n        return\n\n    buttons = [KeyboardButton(text=file) for file in files]\n    keyboard_layout = [buttons[i:i+2] for i in range(0, len(buttons), 2)]\n    keyboard_layout.append([KeyboardButton(text=\"\u2b05\ufe0f Retour au menu principal\")])\n\n    keyboard = ReplyKeyboardMarkup(keyboard=keyboard_layout, resize_keyboard=True)\n    await message.reply(\"\ud83d\udd0d Choisissez un script \u00e0 arr\u00eater et supprimer:\", reply_markup=keyboard)\n\n@dp.message(lambda message: message.text == \"\ud83d\udcdc Liste des scripts\")\nasync def list_codes(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    user_id = message.from_user.id\n    user_folder = os.path.join(BASE_DIR, str(user_id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    files = os.listdir(user_folder)\n    if not files:\n        await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9.\")\n        return\n\n    status = {file: \"\ud83d\udfe2 Actif\" if (user_id, file) in processes and processes[(user_id, file)].returncode is None else \"\ud83d\udd34 Arr\u00eat\u00e9\" for file in files}\n    response = \"\\n\".join([f\"{file}: {state}\" for file, state in status.items()])\n    await message.reply(f\"\ud83d\udcc2 Vos scripts:\\n{response}\")\n\n@dp.message(lambda message: message.text == \"\u25b6\ufe0f Ex\u00e9cuter un script\")\nasync def list_files_for_running(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    user_id = message.from_user.id\n    user_states[user_id] = \"execution\"\n\n    user_folder = os.path.join(BASE_DIR, str(user_id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    files = os.listdir(user_folder)\n    if not files:\n        await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9.\")\n        return\n\n    buttons = [KeyboardButton(text=file) for file in files]\n    keyboard_layout = [buttons[i:i+2] for i in range(0, len(buttons), 2)]\n    keyboard_layout.append([KeyboardButton(text=\"\u2b05\ufe0f Retour au menu principal\")])\n\n    keyboard = ReplyKeyboardMarkup(keyboard=keyboard_layout, resize_keyboard=True)\n    await message.reply(\"\ud83d\udd0d Choisissez un script \u00e0 ex\u00e9cuter:\", reply_markup=keyboard)\n\n@dp.message(lambda message: message.text == \"\u2b05\ufe0f Retour au menu principal\")\nasync def return_to_main_menu(message: types.Message):\n    user_id = message.from_user.id\n    user_states.pop(user_id, None)\n    keyboard = admin_keyboard if user_id in ADMINS else main_keyboard\n    await message.reply(\"\ud83c\udfe0 Retour au menu principal.\", reply_markup=keyboard)\n\n@dp.message(lambda message: message.text == \"\u2b05\ufe0f Retour au panel admin\" and message.from_user.id in ADMINS)\nasync def return_to_admin_panel(message: types.Message):\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n# ==================== GESTION DES ACTIONS UTILISATEUR ====================\n@dp.message()\nasync def handle_user_action(message: types.Message):\n    # V\u00e9rifier d'abord le mode du bot\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    if message.from_user.id in banned_users:\n        await message.reply(\"\ud83d\udeab Vous \u00eates banni de ce bot.\")\n        return\n\n    # Traiter d'abord les commandes admin\n    if message.from_user.id in ADMINS:\n        if user_states.get(message.from_user.id) == \"ban_user\":\n            try:\n                banned_user_id = int(message.text)\n                banned_users.add(banned_user_id)\n                await message.reply(f\"\u2705 L'utilisateur {banned_user_id} a \u00e9t\u00e9 banni avec succ\u00e8s.\")\n            except ValueError:\n                await message.reply(\"\u26a0\ufe0f Veuillez entrer un ID utilisateur valide (chiffres seulement)\")\n            user_states.pop(message.from_user.id, None)\n            await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n            return\n\n        elif user_states.get(message.from_user.id) == \"unban_user\":\n            try:\n                unbanned_user_id = int(message.text)\n                banned_users.discard(unbanned_user_id)\n                await message.reply(f\"\u2705 L'utilisateur {unbanned_user_id} a \u00e9t\u00e9 d\u00e9banni avec succ\u00e8s.\")\n            except ValueError:\n                await message.reply(\"\u26a0\ufe0f Veuillez entrer un ID utilisateur valide (chiffres seulement)\")\n            user_states.pop(message.from_user.id, None)\n            await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n            return\n\n        elif user_states.get(message.from_user.id) == \"save_user\":\n            try:\n                target_user_id = int(message.text)\n                user_folder = os.path.join(BASE_DIR, str(target_user_id))\n                \n                if not os.path.exists(user_folder):\n                    await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9 pour cet utilisateur.\")\n                    user_states.pop(message.from_user.id, None)\n                    return\n                \n                files = os.listdir(user_folder)\n                if not files:\n                    await message.reply(\"\ud83d\udeab Cet utilisateur n'a aucun script.\")\n                    user_states.pop(message.from_user.id, None)\n                    return\n                \n                for file in files:\n                    try:\n                        await message.answer_document(\n                            types.FSInputFile(os.path.join(user_folder, file)),\n                            caption=f\"Script {file} de l'utilisateur {target_user_id}\"\n                        )\n                        await asyncio.sleep(1)\n                    except Exception as e:\n                        await message.reply(f\"\u26a0\ufe0f Erreur lors de l'envoi du fichier {file}: {str(e)}\")\n                \n                await message.reply(\"\u2705 Tous les scripts ont \u00e9t\u00e9 envoy\u00e9s avec succ\u00e8s.\")\n            except ValueError:\n                await message.reply(\"\u26a0\ufe0f Veuillez entrer un ID utilisateur valide (chiffres seulement)\")\n            except Exception as e:\n                await message.reply(f\"\u26a0\ufe0f Une erreur inattendue est survenue: {str(e)}\")\n            \n            user_states.pop(message.from_user.id, None)\n            await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n            return\n\n        elif user_states.get(message.from_user.id) == \"admin_stop_script_user\":\n            try:\n                target_user_id = int(message.text)\n                user_folder = os.path.join(BASE_DIR, str(target_user_id))\n                if not os.path.exists(user_folder):\n                    await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9 pour cet utilisateur.\")\n                    user_states.pop(message.from_user.id, None)\n                    return\n                \n                files = os.listdir(user_folder)\n                if not files:\n                    await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9 pour cet utilisateur.\")\n                    user_states.pop(message.from_user.id, None)\n                    return\n                \n                user_states[message.from_user.id] = (\"admin_stop_script_select\", target_user_id)\n                \n                buttons = [KeyboardButton(text=file) for file in files]\n                keyboard_layout = [buttons[i:i+2] for i in range(0, len(files), 2)]\n                keyboard_layout.append([KeyboardButton(text=\"\u2b05\ufe0f Retour au menu principal\")])\n\n                keyboard = ReplyKeyboardMarkup(keyboard=keyboard_layout, resize_keyboard=True)\n                await message.reply(f\"\ud83d\udd0d Choisissez un script de l'utilisateur {target_user_id} \u00e0 arr\u00eater/supprimer:\", reply_markup=keyboard)\n                return\n                \n            except ValueError:\n                await message.reply(\"\u26a0\ufe0f Veuillez entrer un ID utilisateur valide (chiffres seulement)\")\n                user_states.pop(message.from_user.id, None)\n                await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n                return\n\n        elif isinstance(user_states.get(message.from_user.id), tuple) and user_states[message.from_user.id][0] == \"admin_stop_script_select\":\n            target_user_id = user_states[message.from_user.id][1]\n            filename = message.text\n            \n            if filename == \"\u2b05\ufe0f Retour au menu principal\":\n                user_states.pop(message.from_user.id, None)\n                keyboard = admin_keyboard if message.from_user.id in ADMINS else main_keyboard\n                await message.reply(\"\ud83c\udfe0 Retour au menu principal.\", reply_markup=keyboard)\n                return\n            \n            file_path = os.path.join(BASE_DIR, str(target_user_id), filename)\n            \n            process_stopped = False\n            if (target_user_id, filename) in processes:\n                process = processes[(target_user_id, filename)]\n                if process.returncode is None:\n                    try:\n                        process.terminate()\n                        try:\n                            await asyncio.wait_for(process.wait(), timeout=3)\n                            process_stopped = True\n                        except asyncio.TimeoutError:\n                            process.kill()\n                            process_stopped = True\n                        await message.reply(f\"\u26d4 Le script {filename} a \u00e9t\u00e9 arr\u00eat\u00e9 avec succ\u00e8s.\")\n                    except Exception as e:\n                        await message.reply(f\"\u26a0\ufe0f Erreur lors de l'arr\u00eat du script: {str(e)}\")\n                    finally:\n                        if (target_user_id, filename) in processes:\n                            del processes[(target_user_id, filename)]\n            \n            try:\n                if os.path.exists(file_path):\n                    os.remove(file_path)\n                    await message.reply(f\"\u2705 Le script {filename} de l'utilisateur {target_user_id} a \u00e9t\u00e9 supprim\u00e9 avec succ\u00e8s.\")\n                else:\n                    if not process_stopped:\n                        await message.reply(f\"\u26a0\ufe0f Le fichier {filename} n'existe pas pour l'utilisateur {target_user_id}.\")\n            except Exception as e:\n                await message.reply(f\"\u26a0\ufe0f Erreur lors de la suppression du script: {str(e)}\")\n\n            user_states.pop(message.from_user.id, None)\n            await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n            return\n\n    # Traiter les commandes normales\n    user_folder = os.path.join(BASE_DIR, str(message.from_user.id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    user_files = os.listdir(user_folder)\n    filename = message.text\n    file_path = os.path.join(user_folder, filename)\n\n    if filename not in user_files:\n        return\n\n    if user_states.get(message.from_user.id) == \"execution\":\n        missing_libraries = check_and_install_libraries(file_path)\n\n        if missing_libraries:\n            await message.reply(f\"\u26a0\ufe0f Biblioth\u00e8ques manquantes install\u00e9es:\\n\" + \"\\n\".join(missing_libraries))\n        else:\n            await message.reply(f\"\u2705 Toutes les biblioth\u00e8ques sont d\u00e9j\u00e0 install\u00e9es.\")\n\n        await message.reply(f\"\ud83d\ude80 Ex\u00e9cution du script {filename}...\")\n        process = await asyncio.create_subprocess_exec(\n            'python3', file_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE\n        )\n        processes[(message.from_user.id, filename)] = process\n\n        stdout, stderr = await process.communicate()\n\n        if stdout:\n            await message.reply(f\"\ud83d\udce4 Sortie:\\n```\\n{stdout.decode()}\\n```\", parse_mode=\"Markdown\")\n        if stderr:\n            await message.reply(f\"\u26a0\ufe0f Erreurs:\\n```\\n{stderr.decode()}\\n```\", parse_mode=\"Markdown\")\n\n        user_states.pop(message.from_user.id, None)\n\n    elif user_states.get(message.from_user.id) == \"suppression\":\n        if (message.from_user.id, filename) in processes:\n            process = processes[(message.from_user.id, filename)]\n            if process.returncode is None:\n                process.terminate()\n                try:\n                    await process.wait(timeout=5)\n                except asyncio.TimeoutError:\n                    process.kill()\n            del processes[(message.from_user.id, filename)]\n\n        if os.path.exists(file_path):\n            os.remove(file_path)\n            await message.reply(f\"\u2705 Le script {filename} a \u00e9t\u00e9 supprim\u00e9 avec succ\u00e8s.\")\n        else:\n            await message.reply(f\"\u26a0\ufe0f Le fichier {filename} n'existe pas.\")\n\n        user_states.pop(message.from_user.id, None)\n\n# ==================== FONCTION PRINCIPALE ====================\nasync def main():\n    # D\u00e9marrer le serveur Flask\n    start_flask_server()\n    \n    # D\u00e9marrer la t\u00e2che keep-alive\n    asyncio.create_task(keep_alive_task())\n    \n    print(\"\ud83e\udd16 Bot d\u00e9marr\u00e9 avec succ\u00e8s!\")\n    print(f\"\ud83d\udce1 Keep-Alive configur\u00e9 pour {KEEP_ALIVE_URL} toutes les {KEEP_ALIVE_INTERVAL} secondes\")\n    print(f\"\ud83c\udf10 Serveur Flask actif sur le port 8080\")\n    \n    # D\u00e9marrer le polling du bot\n    await dp.start_polling(bot)\n\nif __name__ == \"__main__\":\n    asyncio.run(main())",
+      "createdAt": "2026-07-05T09:53:14.578Z",
+      "updatedAt": "2026-07-05T10:18:58.022Z",
+      "size": 31407,
+      "status": "idle",
+      "autoInstall": true,
+      "lastRun": "2026-07-05T10:43:42.139Z"
+    },
+    "v49shvaav": {
+      "id": "v49shvaav",
+      "name": "compression4.py",
+      "content": "import os\nimport io\nimport fitz\nfrom PIL import Image\nfrom telegram import Update\nfrom telegram.ext import (\n    ApplicationBuilder,\n    CommandHandler,\n    MessageHandler,\n    ContextTypes,\n    filters,\n)\n\n# ================= CONFIG =================\nBOT_TOKEN = \"7967232102:AAGYtDeiEmr8wD8_Eormr1PyXZeLxP0D8YA\"\nWORKDIR = \"pdf_work\"\nos.makedirs(WORKDIR, exist_ok=True)\n# ==========================================\n\n\ndef format_size(size):\n    for unit in [\"B\", \"KB\", \"MB\", \"GB\"]:\n        if size < 1024:\n            return f\"{size:.2f} {unit}\"\n        size /= 1024\n\n\n# \ud83d\udd39 COMPRESSION IMAGES (SAFE)\ndef compress_images(input_pdf, output_pdf, quality=60):\n    doc = fitz.open(input_pdf)\n\n    for page in doc:\n        for img in page.get_images(full=True):\n            xref = img[0]\n            try:\n                base = doc.extract_image(xref)\n                pix = fitz.Pixmap(fitz.open(\"png\", base[\"image\"]))\n                if pix.n >= 4:  # RGBA \u2192 RGB\n                    pix = fitz.Pixmap(pix, 0)\n\n                # Convertir Pixmap en PIL\n                img_pil = Image.frombytes(\"RGB\", [pix.width, pix.height], pix.samples)\n\n                buffer = io.BytesIO()\n                img_pil.save(buffer, format=\"JPEG\", quality=quality)\n\n                doc.update_image(xref, stream=buffer.getvalue())\n            except Exception as e:\n                print(f\"\u26a0\ufe0f Image skipped: {e}\")\n                pass\n\n    doc.save(\n        output_pdf,\n        garbage=4,\n        deflate=True,\n        clean=True,\n        linear=True,\n    )\n    doc.close()\n\n\n# \ud83d\udd25 MODE D\u00c9GRADATION L\u00c9G\u00c8RE (RASTER)\ndef rasterize_pdf(input_pdf, output_pdf, dpi=140, jpeg_quality=70):\n    src = fitz.open(input_pdf)\n    dst = fitz.open()\n    zoom = dpi / 72\n\n    for page in src:\n        mat = fitz.Matrix(zoom, zoom)\n        pix = page.get_pixmap(matrix=mat, alpha=False)\n\n        # Convertir Pixmap en PIL pour compression JPEG\n        img_pil = Image.frombytes(\"RGB\", [pix.width, pix.height], pix.samples)\n        buffer = io.BytesIO()\n        img_pil.save(buffer, format=\"JPEG\", quality=jpeg_quality)\n        buffer.seek(0)\n\n        # Nouvelle page dans dst avec la taille de l\u2019image\n        rect = fitz.Rect(0, 0, pix.width, pix.height)\n        new_page = dst.new_page(width=pix.width, height=pix.height)\n\n        # Ins\u00e9rer l\u2019image JPEG\n        new_page.insert_image(rect, stream=buffer.getvalue())\n\n    dst.save(\n        output_pdf,\n        garbage=4,\n        deflate=True,\n        clean=True,\n        linear=True,\n    )\n    src.close()\n    dst.close()\n\n\n# ================= BOT =================\n\nasync def start(update: Update, context: ContextTypes.DEFAULT_TYPE):\n    await update.message.reply_text(\n        \"\ud83d\udcc4 Envoie-moi un fichier PDF.\\n\"\n        \"\ud83d\udd27 Compression intelligente automatique.\"\n    )\n\n\nasync def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):\n    document = update.message.document\n\n    if document.mime_type != \"application/pdf\":\n        await update.message.reply_text(\"\u274c Merci d\u2019envoyer uniquement un PDF.\")\n        return\n\n    input_path = os.path.join(WORKDIR, document.file_name)\n    output_path = input_path.replace(\".pdf\", \"_compressed.pdf\")\n    raster_path = input_path.replace(\".pdf\", \"_raster.pdf\")\n\n    file = await document.get_file()\n    await file.download_to_drive(input_path)\n\n    before = os.path.getsize(input_path)\n    msg = await update.message.reply_text(\"\u23f3 Compression en cours...\")\n\n    try:\n        # 1\ufe0f\u20e3 Compression standard\n        compress_images(input_path, output_path, quality=60)\n        after = os.path.getsize(output_path)\n        percent = ((before - after) / before) * 100 if after < before else 0\n\n        # 2\ufe0f\u20e3 Si PDF d\u00e9j\u00e0 optimis\u00e9 \u2192 d\u00e9gradation l\u00e9g\u00e8re\n        if percent < 3:\n            rasterize_pdf(input_path, raster_path, dpi=140, jpeg_quality=70)\n            raster_size = os.path.getsize(raster_path)\n\n            if raster_size < before:\n                final_path = raster_path\n                final_size = raster_size\n                caption = (\n                    \"\u26a0\ufe0f Compression avec l\u00e9g\u00e8re perte de qualit\u00e9\\n\\n\"\n                    f\"\ud83d\udce6 Avant : {format_size(before)}\\n\"\n                    f\"\ud83d\udcc9 Apr\u00e8s : {format_size(final_size)}\\n\"\n                    \"\ud83e\udde0 Mode : Texte aplati (lisible)\"\n                )\n            else:\n                final_path = input_path\n                final_size = before\n                caption = (\n                    \"\u2139\ufe0f PDF extr\u00eamement optimis\u00e9\\n\\n\"\n                    f\"\ud83d\udce6 Taille : {format_size(before)}\\n\"\n                    \"Aucune r\u00e9duction possible.\"\n                )\n        else:\n            final_path = output_path\n            final_size = after\n            caption = (\n                \"\u2705 Compression r\u00e9ussie\\n\\n\"\n                f\"\ud83d\udce6 Avant : {format_size(before)}\\n\"\n                f\"\ud83d\udcc9 Apr\u00e8s : {format_size(final_size)}\\n\"\n                f\"\ud83d\udd25 Gain : {percent:.2f}%\"\n            )\n\n        await update.message.reply_document(\n            document=open(final_path, \"rb\"),\n            caption=caption,\n        )\n\n    except Exception as e:\n        await update.message.reply_text(f\"\u274c Erreur : {e}\")\n\n    finally:\n        for f in (input_path, output_path, raster_path):\n            if os.path.exists(f):\n                os.remove(f)\n\n\ndef main():\n    app = ApplicationBuilder().token(BOT_TOKEN).build()\n    app.add_handler(CommandHandler(\"start\", start))\n    app.add_handler(MessageHandler(filters.Document.ALL, handle_pdf))\n    print(\"\ud83e\udd16 Bot pr\u00eat \u2013 compression PDF professionnelle\")\n    app.run_polling()\n\n\nif __name__ == \"__main__\":\n    main()",
+      "createdAt": "2026-07-05T10:00:19.005Z",
+      "updatedAt": "2026-07-05T10:01:09.862Z",
+      "size": 5558,
+      "status": "idle",
+      "autoInstall": true,
+      "lastRun": "2026-07-05T10:36:20.962Z"
+    },
+    "ghx33pm6k": {
+      "id": "ghx33pm6k",
+      "name": "keep_alive_new_2026.py",
+      "content": "# keep_alive.py - \u0633\u0643\u0631\u064a\u0628\u062a \u0645\u0633\u062a\u0642\u0644 \u0644\u0644\u062d\u0641\u0627\u0638 \u0639\u0644\u0649 \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u0628\u0648\u062a\u0627\u062a\nimport requests\nimport time\nimport os\nimport socket\nfrom threading import Thread\nfrom flask import Flask\nimport asyncio\n\n# ==================== CONFIGURATION ====================\nKEEP_ALIVE_INTERVAL = 1  # \u062b\u0648\u0627\u0646\u064a \u0628\u064a\u0646 \u0643\u0644 \u0637\u0644\u0628\nkeep_alive_running = True\n\n# ==================== \u0633\u064a\u0631\u0641\u0631 Flask ====================\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    return \"\u2705 Bot is alive and running!\"\n\n@app.route('/health')\ndef health():\n    return {\n        'status': 'healthy',\n        'uptime': time.time() - start_time,\n        'interval': KEEP_ALIVE_INTERVAL\n    }, 200\n\ndef get_public_url():\n    \"\"\"\u0643\u0634\u0641 \u0627\u0644\u0631\u0627\u0628\u0637 \u0627\u0644\u0639\u0627\u0645 \u062a\u0644\u0642\u0627\u0626\u064a\u0627\u064b\"\"\"\n    # \u0645\u062a\u063a\u064a\u0631\u0627\u062a \u0627\u0644\u0628\u064a\u0626\u0629 \u0644\u0640 Render\n    render_url = os.environ.get('RENDER_EXTERNAL_URL')\n    if render_url:\n        return render_url\n    \n    # \u0631\u0627\u0628\u0637 \u0645\u062e\u0635\u0635\n    custom_url = os.environ.get('PUBLIC_URL')\n    if custom_url:\n        return custom_url\n    \n    # \u0643\u0634\u0641 \u0628\u0648\u0627\u0633\u0637\u0629 hostname\n    hostname = socket.gethostname()\n    if 'render' in hostname.lower():\n        service_name = os.environ.get('RENDER_SERVICE_NAME', '')\n        if service_name:\n            return f\"https://{service_name}.onrender.com\"\n    \n    # \u0643\u0634\u0641 \u0627\u0644\u0640 IP \u0627\u0644\u0639\u0627\u0645\n    try:\n        response = requests.get('https://api.ipify.org?format=json', timeout=5)\n        if response.status_code == 200:\n            public_ip = response.json()['ip']\n            port = os.environ.get('PORT', 8080)\n            return f\"http://{public_ip}:{port}\"\n    except:\n        pass\n    \n    return \"http://localhost:8080\"\n\ndef run_flask():\n    \"\"\"\u062a\u0634\u063a\u064a\u0644 \u0633\u064a\u0631\u0641\u0631 Flask\"\"\"\n    port = int(os.environ.get('PORT', 5000))\n    app.run(host='0.0.0.0', port=port)\n\ndef start_flask():\n    \"\"\"\u0628\u062f\u0621 \u0633\u064a\u0631\u0641\u0631 Flask \u0641\u064a thread \u0645\u0646\u0641\u0635\u0644\"\"\"\n    flask_thread = Thread(target=run_flask, daemon=True)\n    flask_thread.start()\n    print(f\"\u2705 \u0633\u064a\u0631\u0641\u0631 Flask \u064a\u0639\u0645\u0644 \u0639\u0644\u0649 port {os.environ.get('PORT', 8080)}\")\n\nasync def keep_alive_loop():\n    \"\"\"\u0627\u0644\u062d\u0644\u0642\u0629 \u0627\u0644\u0631\u0626\u064a\u0633\u064a\u0629 \u0644\u0644\u0640 keep alive\"\"\"\n    global keep_alive_running\n    \n    target_url = get_public_url()\n    print(f\"\ud83d\udd04 \u0628\u062f\u0621 \u062e\u062f\u0645\u0629 Keep-Alive\")\n    print(f\"\ud83c\udfaf \u0627\u0644\u0647\u062f\u0641: {target_url}\")\n    print(f\"\u23f1\ufe0f \u0643\u0644 {KEEP_ALIVE_INTERVAL} \u062b\u0627\u0646\u064a\u0629\")\n    \n    is_local = 'localhost' in target_url or '127.0.0.1' in target_url\n    \n    while keep_alive_running:\n        if not is_local:\n            try:\n                response = requests.get(target_url, timeout=1)\n                print(f\"\ud83d\udce1 Ping - Status: {response.status_code}\")\n                if response.status_code == 200:\n                    print(\"\u2705 \u062a\u0645 \u0628\u0646\u062c\u0627\u062d\")\n            except Exception as e:\n                print(f\"\u274c \u062e\u0637\u0623: {e}\")\n        \n        await asyncio.sleep(KEEP_ALIVE_INTERVAL)\n\ndef start_keep_alive():\n    \"\"\"\u0628\u062f\u0621 \u062e\u062f\u0645\u0629 keep alive (\u0644\u0644\u0625\u0633\u062a\u062e\u062f\u0627\u0645 \u0641\u064a \u0627\u0644\u0633\u0643\u0631\u064a\u0628\u062a\u0627\u062a \u0627\u0644\u063a\u064a\u0631 async)\"\"\"\n    start_flask()\n    \n    # \u062a\u0634\u063a\u064a\u0644 \u062d\u0644\u0642\u0629 keep alive \u0641\u064a thread \u0645\u0646\u0641\u0635\u0644\n    def run_loop():\n        asyncio.run(keep_alive_loop())\n    \n    keep_alive_thread = Thread(target=run_loop, daemon=True)\n    keep_alive_thread.start()\n    print(\"\u2705 \u062e\u062f\u0645\u0629 Keep-Alive \u062a\u0639\u0645\u0644 \u0627\u0644\u0622\u0646\")\n\n# ==================== \u0646\u0642\u0637\u0629 \u0627\u0644\u0628\u062f\u0627\u064a\u0629 ====================\nstart_time = time.time()\n\nif __name__ == \"__main__\":\n    # \u0625\u0630\u0627 \u062a\u0645 \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u0633\u0643\u0631\u064a\u0628\u062a \u0628\u0645\u0641\u0631\u062f\u0647\n    start_flask()\n    asyncio.run(keep_alive_loop())",
+      "createdAt": "2026-07-05T10:53:56.841Z",
+      "updatedAt": "2026-07-05T10:53:56.841Z",
+      "size": 3210,
+      "status": "idle",
+      "autoInstall": true,
+      "lastRun": "2026-07-05T11:00:18.727Z"
+    },
+    "xstv68wik": {
+      "id": "xstv68wik",
+      "name": "flask+bot555.py",
+      "content": "import subprocess\nimport os\nimport asyncio\nimport importlib\nfrom aiogram import Bot, Dispatcher, types\nfrom aiogram.types import ReplyKeyboardMarkup, KeyboardButton\nfrom aiogram.filters import Command\nfrom flask import Flask\nfrom threading import Thread\nimport requests\nimport time\nimport socket\nimport signal\nimport sys\n\n# ==================== CONFIGURATION DU BOT ====================\nTOKEN = \"7967232102:AAGYtDeiEmr8wD8_Eormr1PyXZeLxP0D8YA\"\nBASE_DIR = \"scripts\"\nprocesses = {}\nuser_states = {}\nbanned_users = set()\nADMINS = [1726923679]  # IDs des administrateurs\nBOT_MODE = \"public\"  # Peut \u00eatre \"public\" ou \"private\"\n\n# ==================== CONFIGURATION KEEP ALIVE ====================\nKEEP_ALIVE_INTERVAL = 45  # Secondes entre chaque requ\u00eate keep-alive\nkeep_alive_running = True\ncustom_keep_alive_url = None  # URL personnalis\u00e9e (None = d\u00e9tection automatique)\nbot_restart_count = 0\nMAX_RESTART_ATTEMPTS = 5\n\n# \ud83d\udcc2 Cr\u00e9er le dossier des scripts s'il n'existe pas\nos.makedirs(BASE_DIR, exist_ok=True)\n\n# Initialisation avec MemoryStorage pour aiogram 2.x\nbot = Bot(token=TOKEN)\ndp = Dispatcher()\n\n# ==================== GESTION DES SIGNAUX POUR RED\u00c9MARRAGE AUTOMATIQUE ====================\ndef signal_handler(signum, frame):\n    \"\"\"Gestionnaire de signaux pour un arr\u00eat propre\"\"\"\n    print(f\"Signal {signum} re\u00e7u. Arr\u00eat propre du bot...\")\n    cleanup_processes()\n    sys.exit(0)\n\nsignal.signal(signal.SIGINT, signal_handler)\nsignal.signal(signal.SIGTERM, signal_handler)\n\ndef cleanup_processes():\n    \"\"\"Nettoie tous les processus en cours\"\"\"\n    for key, process in processes.items():\n        try:\n            if process.returncode is None:\n                process.terminate()\n                process.wait(timeout=5)\n        except:\n            try:\n                process.kill()\n            except:\n                pass\n\n# ==================== D\u00c9TECTION AUTOMATIQUE DE L'URL ====================\ndef get_public_url():\n    \"\"\"\n    D\u00e9tecte automatiquement l'URL publique du service selon la plateforme d'h\u00e9bergement\n    \"\"\"\n    # M\u00e9thode 1: Variable d'environnement Render\n    render_url = os.environ.get('RENDER_EXTERNAL_URL')\n    if render_url:\n        print(f\"\u2705 URL Render d\u00e9tect\u00e9e: {render_url}\")\n        return render_url\n    \n    # M\u00e9thode 2: Variable d'environnement personnalis\u00e9e\n    custom_url = os.environ.get('PUBLIC_URL')\n    if custom_url:\n        print(f\"\u2705 URL personnalis\u00e9e d\u00e9tect\u00e9e: {custom_url}\")\n        return custom_url\n    \n    # M\u00e9thode 3: D\u00e9tection par nom d'h\u00f4te (pour certains services)\n    hostname = socket.gethostname()\n    if 'render' in hostname.lower():\n        # Construction de l'URL Render \u00e0 partir du nom de service\n        service_name = os.environ.get('RENDER_SERVICE_NAME', '')\n        if service_name:\n            return f\"https://{service_name}.onrender.com\"\n    \n    # M\u00e9thode 4: Essayer de d\u00e9tecter l'IP publique (pour les VPS)\n    try:\n        # Essayer de r\u00e9cup\u00e9rer l'IP publique\n        response = requests.get('https://api.ipify.org?format=json', timeout=5)\n        if response.status_code == 200:\n            public_ip = response.json()['ip']\n            # V\u00e9rifier si les ports sont ouverts\n            return f\"http://{public_ip}:8080\"\n    except:\n        pass\n    \n    # M\u00e9thode 5: URL par d\u00e9faut (pour le d\u00e9veloppement local)\n    print(\"\u26a0\ufe0f Aucune URL publique d\u00e9tect\u00e9e, utilisation de l'URL par d\u00e9faut\")\n    return \"http://localhost:8080\"\n\ndef get_keep_alive_url():\n    \"\"\"\n    Obtient l'URL cible pour le keep-alive\n    \"\"\"\n    global custom_keep_alive_url\n    \n    # Priorit\u00e9 1: URL personnalis\u00e9e d\u00e9finie par l'admin\n    if custom_keep_alive_url:\n        return custom_keep_alive_url\n    \n    # Priorit\u00e9 2: Variable d'environnement sp\u00e9cifique pour keep-alive\n    env_url = os.environ.get('KEEP_ALIVE_URL')\n    if env_url:\n        return env_url\n    \n    # Priorit\u00e9 3: URL du service lui-m\u00eame (auto-ping)\n    service_url = get_public_url()\n    return service_url\n\n# URL cible pour le keep-alive (d\u00e9tect\u00e9e automatiquement)\nKEEP_ALIVE_URL = get_keep_alive_url()\n\nprint(f\"\ud83c\udf10 URL cible Keep-Alive configur\u00e9e: {KEEP_ALIVE_URL}\")\n\n# ==================== FONCTIONS D'\u00c9TAT DU SYST\u00c8ME ====================\ndef get_system_status():\n    \"\"\"R\u00e9cup\u00e8re les informations sur l'\u00e9tat du syst\u00e8me sans utiliser psutil\"\"\"\n    try:\n        # Informations CPU via /proc/cpuinfo (Linux) ou commandes syst\u00e8me\n        cpu_info = \"\"\n        cpu_usage = \"\"\n        memory_info = \"\"\n        disk_info = \"\"\n        uptime_info = \"\"\n        network_info = \"\"\n        \n        # Essayer de r\u00e9cup\u00e9rer les informations CPU\n        try:\n            # Commande pour l'utilisation CPU (Linux/Mac)\n            if os.name == 'posix':\n                # Utilisation CPU via /proc/stat ou top\n                result = subprocess.run(['top', '-bn1'], capture_output=True, text=True, timeout=5)\n                if result.returncode == 0:\n                    for line in result.stdout.split('\\n'):\n                        if 'Cpu(s)' in line:\n                            cpu_usage = line.strip()\n                            break\n                \n                # Informations CPU via /proc/cpuinfo\n                if os.path.exists('/proc/cpuinfo'):\n                    with open('/proc/cpuinfo', 'r') as f:\n                        for line in f:\n                            if 'model name' in line:\n                                cpu_info = line.split(':')[1].strip()\n                                break\n                \n                # M\u00e9moire via /proc/meminfo\n                if os.path.exists('/proc/meminfo'):\n                    mem_total = 0\n                    mem_available = 0\n                    with open('/proc/meminfo', 'r') as f:\n                        for line in f:\n                            if 'MemTotal' in line:\n                                mem_total = int(line.split(':')[1].strip().split()[0])\n                            elif 'MemAvailable' in line:\n                                mem_available = int(line.split(':')[1].strip().split()[0])\n                    if mem_total > 0:\n                        mem_used = mem_total - mem_available\n                        mem_percent = (mem_used / mem_total) * 100\n                        memory_info = f\"M\u00e9moire: {mem_used/1024:.1f}MB / {mem_total/1024:.1f}MB ({mem_percent:.1f}%)\"\n                \n                # Disque via df\n                result = subprocess.run(['df', '-h', '/'], capture_output=True, text=True, timeout=5)\n                if result.returncode == 0:\n                    lines = result.stdout.strip().split('\\n')\n                    if len(lines) > 1:\n                        parts = lines[1].split()\n                        if len(parts) >= 5:\n                            disk_info = f\"Disque: {parts[2]} utilis\u00e9 / {parts[1]} total ({parts[4]})\"\n                \n                # Uptime\n                result = subprocess.run(['uptime'], capture_output=True, text=True, timeout=5)\n                if result.returncode == 0:\n                    uptime_info = result.stdout.strip()\n                \n            elif os.name == 'nt':  # Windows\n                # Utilisation CPU via wmic\n                result = subprocess.run(['wmic', 'cpu', 'get', 'loadpercentage'], capture_output=True, text=True, timeout=5)\n                if result.returncode == 0:\n                    lines = result.stdout.strip().split('\\n')\n                    if len(lines) > 1:\n                        cpu_usage = f\"CPU Usage: {lines[1].strip()}%\"\n                \n                # Informations syst\u00e8me via systeminfo\n                result = subprocess.run(['systeminfo'], capture_output=True, text=True, timeout=10)\n                if result.returncode == 0:\n                    for line in result.stdout.split('\\n'):\n                        if 'Total Physical Memory' in line:\n                            memory_info = line.strip()\n                        elif 'Available Physical Memory' in line:\n                            memory_info += f\"\\n{line.strip()}\"\n                \n        except Exception as e:\n            cpu_usage = f\"Erreur r\u00e9cup\u00e9ration CPU: {str(e)}\"\n        \n        # Informations sur le processus Python\n        try:\n            process = subprocess.run(['ps', '-p', str(os.getpid()), '-o', '%cpu,%mem,rss'], \n                                   capture_output=True, text=True, timeout=5)\n            if process.returncode == 0:\n                process_info = process.stdout.strip().split('\\n')\n                if len(process_info) > 1:\n                    process_stats = process_info[1].strip().split()\n                    if len(process_stats) >= 3:\n                        process_text = f\"CPU: {process_stats[0]}%, RAM: {process_stats[1]}%, RSS: {int(process_stats[2])/1024:.1f}MB\"\n        except:\n            process_text = \"Information non disponible\"\n        \n        # Informations Python\n        python_info = f\"Python: {os.sys.version.split()[0]}\"\n        \n        # Construction du message\n        status_text = (\n            f\"\ud83d\udda5 **\u00c9TAT DU SYST\u00c8ME**\\n\\n\"\n            f\"**\ud83d\udcca CPU:**\\n\"\n            f\"\u2022 {cpu_info if cpu_info else 'Information non disponible'}\\n\"\n            f\"\u2022 {cpu_usage if cpu_usage else 'Usage non disponible'}\\n\\n\"\n            f\"**\ud83d\udcbe M\u00e9moire RAM:**\\n\"\n            f\"\u2022 {memory_info if memory_info else 'Information non disponible'}\\n\\n\"\n            f\"**\ud83d\udcbf Disque:**\\n\"\n            f\"\u2022 {disk_info if disk_info else 'Information non disponible'}\\n\\n\"\n            f\"**\u23f1 Uptime:**\\n\"\n            f\"\u2022 {uptime_info if uptime_info else 'Information non disponible'}\\n\\n\"\n            f\"**\ud83d\udc0d Processus Bot:**\\n\"\n            f\"\u2022 {process_text}\\n\"\n            f\"\u2022 {python_info}\\n\\n\"\n            f\"**\ud83d\udcf1 Syst\u00e8me:**\\n\"\n            f\"\u2022 {os.name.upper() if os.name == 'posix' else 'Windows'}\"\n        )\n        \n        return status_text\n    except Exception as e:\n        return f\"\u26a0\ufe0f Erreur lors de la r\u00e9cup\u00e9ration de l'\u00e9tat du syst\u00e8me: {str(e)}\"\n\n# ==================== SERVEUR FLASK POUR KEEP ALIVE ====================\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    return \"Bot is alive and running!\"\n\n@app.route('/health')\ndef health():\n    return {\n        'status': 'healthy',\n        'url': KEEP_ALIVE_URL,\n        'interval': KEEP_ALIVE_INTERVAL,\n        'mode': BOT_MODE,\n        'restart_count': bot_restart_count\n    }, 200\n\ndef run_flask():\n    \"\"\"Fonction pour ex\u00e9cuter le serveur Flask\"\"\"\n    # Utiliser le port attribu\u00e9 par l'h\u00e9bergement ou 8080 par d\u00e9faut\n    port = int(os.environ.get('PORT', 8080))\n    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)\n\n# ==================== FONCTION KEEP ALIVE ====================\ndef start_flask_server():\n    \"\"\"D\u00e9marre le serveur Flask dans un thread s\u00e9par\u00e9\"\"\"\n    flask_thread = Thread(target=run_flask, daemon=True)\n    flask_thread.start()\n    port = int(os.environ.get('PORT', 8080))\n    print(f\"\u2705 Serveur Flask d\u00e9marr\u00e9 sur le port {port}\")\n\nasync def keep_alive_task():\n    \"\"\"T\u00e2che asynchrone pour envoyer des requ\u00eates keep-alive p\u00e9riodiques\"\"\"\n    global keep_alive_running, KEEP_ALIVE_URL\n    max_wait = 60\n    wait_time = 1\n    \n    print(\"\ud83d\udd04 Service Keep-Alive d\u00e9marr\u00e9\")\n    print(f\"\ud83c\udfaf Cible: {KEEP_ALIVE_URL}\")\n    print(f\"\u23f1\ufe0f Intervalle: {KEEP_ALIVE_INTERVAL} secondes\")\n    \n    # URL de test pour v\u00e9rifier si on peut s'auto-pinger\n    is_self_ping = 'localhost' in KEEP_ALIVE_URL or '127.0.0.1' in KEEP_ALIVE_URL\n    \n    while keep_alive_running:\n        try:\n            # Ne pas essayer de s'auto-pinger si c'est localhost (\u00e7a ne fonctionnera pas)\n            if is_self_ping:\n                print(\"\u2139\ufe0f Mode local d\u00e9tect\u00e9, pas d'auto-ping n\u00e9cessaire\")\n                await asyncio.sleep(KEEP_ALIVE_INTERVAL)\n                continue\n            \n            response = requests.get(KEEP_ALIVE_URL, timeout=10)\n            print(f\"\ud83d\udce1 Keep-Alive - {KEEP_ALIVE_URL} - Statut: {response.status_code}\")\n            \n            if response.status_code == 200:\n                print(\"\u2705 Requ\u00eate Keep-Alive r\u00e9ussie!\")\n                wait_time = 1\n            else:\n                print(f\"\u26a0\ufe0f Keep-Alive - Code inattendu: {response.status_code}\")\n            \n            await asyncio.sleep(KEEP_ALIVE_INTERVAL)\n            \n        except requests.exceptions.ConnectionError:\n            print(f\"\u274c Impossible de se connecter \u00e0 {KEEP_ALIVE_URL}\")\n            print(f\"\u23f3 Nouvelle tentative dans {wait_time} seconde(s)...\")\n            await asyncio.sleep(wait_time)\n            wait_time = min(wait_time * 2, max_wait)\n            \n        except requests.exceptions.RequestException as e:\n            print(f\"\u274c Erreur Keep-Alive: {e}\")\n            print(f\"\u23f3 Nouvelle tentative dans {wait_time} seconde(s)...\")\n            await asyncio.sleep(wait_time)\n            wait_time = min(wait_time * 2, max_wait)\n            \n        except Exception as e:\n            print(f\"\ud83d\udca5 Erreur inattendue Keep-Alive: {e}\")\n            await asyncio.sleep(KEEP_ALIVE_INTERVAL)\n\n# ==================== FONCTION DE RED\u00c9MARRAGE AUTOMATIQUE ====================\nasync def auto_restart_bot():\n    \"\"\"Surveille et red\u00e9marre automatiquement le bot en cas d'arr\u00eat\"\"\"\n    global bot_restart_count\n    \n    while True:\n        try:\n            # V\u00e9rifier si le bot est toujours en cours d'ex\u00e9cution\n            await asyncio.sleep(30)\n            \n            # V\u00e9rifier l'\u00e9tat des processus\n            for key, process in list(processes.items()):\n                if process.returncode is not None:\n                    print(f\"Processus {key} termin\u00e9, nettoyage...\")\n                    del processes[key]\n                    \n        except Exception as e:\n            print(f\"Erreur dans la surveillance: {e}\")\n            bot_restart_count += 1\n            \n            if bot_restart_count > MAX_RESTART_ATTEMPTS:\n                print(\"Nombre maximum de tentatives de red\u00e9marrage atteint\")\n                break\n                \n            print(f\"Tentative de red\u00e9marrage {bot_restart_count}/{MAX_RESTART_ATTEMPTS}\")\n            await asyncio.sleep(5)\n\n# ==================== INTERFACE UTILISATEUR ====================\n# \ud83c\udf9b\ufe0f Clavier principal pour les utilisateurs normaux\nmain_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"\u2795 Ajouter un script\")],\n        [KeyboardButton(text=\"\u25b6\ufe0f Ex\u00e9cuter un script\")],\n        [KeyboardButton(text=\"\ud83d\udcdc Liste des scripts\")],\n        [KeyboardButton(text=\"\u274c Arr\u00eater et supprimer un script\")],\n    ],\n    resize_keyboard=True\n)\n\n# \ud83c\udf9b\ufe0f Clavier principal pour les admins\nadmin_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"\u2795 Ajouter un script\")],\n        [KeyboardButton(text=\"\u25b6\ufe0f Ex\u00e9cuter un script\")],\n        [KeyboardButton(text=\"\ud83d\udcdc Liste des scripts\")],\n        [KeyboardButton(text=\"\u274c Arr\u00eater et supprimer un script\")],\n        [KeyboardButton(text=\"\ud83d\udc51 Panel admin\")],\n    ],\n    resize_keyboard=True\n)\n\n# \ud83c\udf9b\ufe0f Panel admin\nadmin_panel_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"\ud83d\udd12 Bannir un utilisateur\"), KeyboardButton(text=\"\ud83d\udd13 D\u00e9bannir un utilisateur\")],\n        [KeyboardButton(text=\"\ud83d\udcbe Sauvegarder scripts utilisateur\"), KeyboardButton(text=\"\ud83d\udccb Liste de tous les scripts\")],\n        [KeyboardButton(text=\"\ud83d\uded1 Arr\u00eater/supprimer script utilisateur\")],\n        [KeyboardButton(text=\"\ud83d\udd10 Mode priv\u00e9\"), KeyboardButton(text=\"\ud83c\udf0d Mode public\")],\n        [KeyboardButton(text=\"\ud83d\udcbb Envoyer commande terminal\")],\n        [KeyboardButton(text=\"\ud83d\udd04 \u00c9tat Keep-Alive\"), KeyboardButton(text=\"\u2699\ufe0f Configurer Keep-Alive\")],\n        [KeyboardButton(text=\"\ud83d\udda5 \u00c9tat du syst\u00e8me\")],\n        [KeyboardButton(text=\"\u2b05\ufe0f Retour au menu principal\")],\n    ],\n    resize_keyboard=True\n)\n\n# \ud83c\udf9b\ufe0f Clavier pour la saisie manuelle des commandes\ncommand_input_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"saisir la commande manuellement\")],\n        [KeyboardButton(text=\"\u2b05\ufe0f Annuler\")],\n    ],\n    resize_keyboard=True\n)\n\n# \ud83c\udf9b\ufe0f Clavier pour la configuration Keep-Alive\nkeep_alive_config_keyboard = ReplyKeyboardMarkup(\n    keyboard=[\n        [KeyboardButton(text=\"\u25b6\ufe0f D\u00e9marrer Keep-Alive\"), KeyboardButton(text=\"\u23f8\ufe0f Arr\u00eater Keep-Alive\")],\n        [KeyboardButton(text=\"\u23f1\ufe0f Changer intervalle\")],\n        [KeyboardButton(text=\"\ud83d\udd17 Changer URL Keep-Alive\")],\n        [KeyboardButton(text=\"\ud83d\udd04 Rafra\u00eechir URL automatique\")],\n        [KeyboardButton(text=\"\ud83d\uddd1 Effacer URL personnalis\u00e9e\")],\n        [KeyboardButton(text=\"\u2b05\ufe0f Retour au panel admin\")],\n    ],\n    resize_keyboard=True\n)\n\n# ==================== COMMANDES DU BOT ====================\n@dp.message_handler(Command(\"start\"))\nasync def start(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    if message.from_user.id in banned_users:\n        await message.reply(\"\ud83d\udeab Vous \u00eates banni de ce bot.\")\n        return\n    \n    keyboard = admin_keyboard if message.from_user.id in ADMINS else main_keyboard\n    await message.reply(\"\ud83d\udc4b Bonjour ! Choisissez une action :\", reply_markup=keyboard)\n\n# ==================== COMMANDES ADMIN ====================\n@dp.message_handler(lambda message: message.text == \"\ud83d\udc51 Panel admin\" and message.from_user.id in ADMINS)\nasync def admin_panel(message: types.Message):\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n# ==================== GESTION KEEP-ALIVE ====================\n@dp.message_handler(lambda message: message.text == \"\ud83d\udd04 \u00c9tat Keep-Alive\" and message.from_user.id in ADMINS)\nasync def keep_alive_status(message: types.Message):\n    global keep_alive_running, KEEP_ALIVE_URL, KEEP_ALIVE_INTERVAL, custom_keep_alive_url\n    status = \"\ud83d\udfe2 ACTIF\" if keep_alive_running else \"\ud83d\udd34 INACTIF\"\n    \n    # D\u00e9tection du type d'URL\n    url_type = \"Personnalis\u00e9e\" if custom_keep_alive_url else \"Auto-d\u00e9tect\u00e9e\"\n    if 'localhost' in KEEP_ALIVE_URL:\n        url_type = \"Mode local\"\n    elif 'render.com' in KEEP_ALIVE_URL:\n        url_type = \"Render.com\"\n    \n    port = int(os.environ.get('PORT', 8080))\n    \n    await message.reply(\n        f\"\ud83d\udcca **\u00c9tat du service Keep-Alive:**\\n\\n\"\n        f\"Statut: {status}\\n\"\n        f\"URL cible: `{KEEP_ALIVE_URL}`\\n\"\n        f\"Type: {url_type}\\n\"\n        f\"Intervalle: {KEEP_ALIVE_INTERVAL} secondes\\n\"\n        f\"Port Flask: {port}\\n\"\n        f\"Red\u00e9marrages: {bot_restart_count}\\n\\n\"\n        f\"\ud83d\udcdd **Configuration:**\\n\"\n        f\"URL personnalis\u00e9e: {'D\u00e9finie' if custom_keep_alive_url else 'Non d\u00e9finie (auto)'}\\n\"\n        f\"L'URL peut \u00eatre modifi\u00e9e manuellement ou laiss\u00e9e vide pour une d\u00e9tection automatique.\",\n        parse_mode=\"Markdown\",\n        reply_markup=admin_panel_keyboard\n    )\n\n@dp.message_handler(lambda message: message.text == \"\u2699\ufe0f Configurer Keep-Alive\" and message.from_user.id in ADMINS)\nasync def keep_alive_config(message: types.Message):\n    await message.reply(\"\u2699\ufe0f Configuration du service Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\udd17 Changer URL Keep-Alive\" and message.from_user.id in ADMINS)\nasync def change_keep_alive_url_prompt(message: types.Message):\n    user_states[message.from_user.id] = \"keep_alive_url\"\n    await message.reply(\n        \"\ud83d\udcdd **Configuration de l'URL Keep-Alive**\\n\\n\"\n        \"Envoyez la nouvelle URL cible pour le Keep-Alive.\\n\\n\"\n        \"**Options:**\\n\"\n        \"\u2022 Envoyez une URL compl\u00e8te (ex: `https://mon-site.com`)\\n\"\n        \"\u2022 Envoyez `auto` pour utiliser la d\u00e9tection automatique\\n\"\n        \"\u2022 Envoyez `vide` ou `none` pour d\u00e9sactiver la personnalisation\\n\\n\"\n        \"L'URL actuelle est: `\" + KEEP_ALIVE_URL + \"`\",\n        parse_mode=\"Markdown\",\n        reply_markup=command_input_keyboard\n    )\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\uddd1 Effacer URL personnalis\u00e9e\" and message.from_user.id in ADMINS)\nasync def clear_custom_url(message: types.Message):\n    global custom_keep_alive_url, KEEP_ALIVE_URL\n    old_url = KEEP_ALIVE_URL\n    custom_keep_alive_url = None\n    KEEP_ALIVE_URL = get_keep_alive_url()\n    \n    await message.reply(\n        f\"\u2705 URL personnalis\u00e9e effac\u00e9e. Retour \u00e0 la d\u00e9tection automatique.\\n\"\n        f\"Ancienne URL: `{old_url}`\\n\"\n        f\"Nouvelle URL: `{KEEP_ALIVE_URL}`\",\n        parse_mode=\"Markdown\"\n    )\n    await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\udd04 Rafra\u00eechir URL automatique\" and message.from_user.id in ADMINS)\nasync def refresh_keep_alive_url(message: types.Message):\n    global KEEP_ALIVE_URL\n    old_url = KEEP_ALIVE_URL\n    KEEP_ALIVE_URL = get_keep_alive_url()\n    \n    await message.reply(\n        f\"\ud83d\udd04 URL Keep-Alive rafra\u00eechie:\\n\"\n        f\"Ancienne: `{old_url}`\\n\"\n        f\"Nouvelle: `{KEEP_ALIVE_URL}`\",\n        parse_mode=\"Markdown\"\n    )\n    await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\u25b6\ufe0f D\u00e9marrer Keep-Alive\" and message.from_user.id in ADMINS)\nasync def start_keep_alive(message: types.Message):\n    global keep_alive_running\n    if not keep_alive_running:\n        keep_alive_running = True\n        asyncio.create_task(keep_alive_task())\n        await message.reply(\"\u2705 Service Keep-Alive d\u00e9marr\u00e9 avec succ\u00e8s!\")\n    else:\n        await message.reply(\"\u2139\ufe0f Le service Keep-Alive est d\u00e9j\u00e0 en cours d'ex\u00e9cution.\")\n    await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\u23f8\ufe0f Arr\u00eater Keep-Alive\" and message.from_user.id in ADMINS)\nasync def stop_keep_alive(message: types.Message):\n    global keep_alive_running\n    if keep_alive_running:\n        keep_alive_running = False\n        await message.reply(\"\u23f8\ufe0f Service Keep-Alive arr\u00eat\u00e9. (Les requ\u00eates s'arr\u00eateront apr\u00e8s la prochaine it\u00e9ration)\")\n    else:\n        await message.reply(\"\u2139\ufe0f Le service Keep-Alive est d\u00e9j\u00e0 arr\u00eat\u00e9.\")\n    await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\u23f1\ufe0f Changer intervalle\" and message.from_user.id in ADMINS)\nasync def change_keep_alive_interval(message: types.Message):\n    user_states[message.from_user.id] = \"keep_alive_interval\"\n    await message.reply(\n        \"\ud83d\udcdd Entrez le nouvel intervalle en secondes (minimum 30 secondes, maximum 300 secondes):\",\n        reply_markup=command_input_keyboard\n    )\n\n# ==================== GESTION DE L'URL KEEP-ALIVE ====================\n@dp.message_handler(lambda message: user_states.get(message.from_user.id) == \"keep_alive_url\" and message.from_user.id in ADMINS)\nasync def handle_keep_alive_url(message: types.Message):\n    global KEEP_ALIVE_URL, custom_keep_alive_url\n    \n    if message.text == \"\u2b05\ufe0f Annuler\":\n        user_states.pop(message.from_user.id, None)\n        await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n        return\n    \n    new_url = message.text.strip()\n    \n    # Cas sp\u00e9ciaux\n    if new_url.lower() in ['auto', 'automatique', 'd\u00e9faut', 'default']:\n        custom_keep_alive_url = None\n        KEEP_ALIVE_URL = get_keep_alive_url()\n        await message.reply(\n            f\"\u2705 Mode automatique activ\u00e9. URL d\u00e9tect\u00e9e: `{KEEP_ALIVE_URL}`\",\n            parse_mode=\"Markdown\"\n        )\n    elif new_url.lower() in ['vide', 'none', 'null', 'rien', 'empty']:\n        custom_keep_alive_url = None\n        KEEP_ALIVE_URL = get_keep_alive_url()\n        await message.reply(\n            f\"\u2705 URL personnalis\u00e9e d\u00e9sactiv\u00e9e. URL par d\u00e9faut: `{KEEP_ALIVE_URL}`\",\n            parse_mode=\"Markdown\"\n        )\n    else:\n        # Validation basique de l'URL\n        if not new_url.startswith(('http://', 'https://')):\n            await message.reply(\n                \"\u26a0\ufe0f L'URL doit commencer par `http://` ou `https://`\\n\"\n                \"Veuillez r\u00e9essayer avec une URL valide.\"\n            )\n            return\n        \n        custom_keep_alive_url = new_url\n        KEEP_ALIVE_URL = new_url\n        await message.reply(\n            f\"\u2705 URL Keep-Alive mise \u00e0 jour avec succ\u00e8s!\\n\"\n            f\"Nouvelle URL: `{KEEP_ALIVE_URL}`\",\n            parse_mode=\"Markdown\"\n        )\n    \n    user_states.pop(message.from_user.id, None)\n    await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n# ==================== AUTRES COMMANDES ADMIN ====================\n@dp.message_handler(lambda message: message.text == \"\ud83d\udcbb Envoyer commande terminal\" and message.from_user.id in ADMINS)\nasync def send_terminal_command(message: types.Message):\n    user_states[message.from_user.id] = \"terminal_command\"\n    await message.reply(\"\ud83d\udcdd Entrez la commande \u00e0 ex\u00e9cuter dans le terminal:\", reply_markup=command_input_keyboard)\n\n# Gestion des commandes terminal\n@dp.message_handler(lambda message: user_states.get(message.from_user.id) == \"terminal_command\" and message.from_user.id in ADMINS)\nasync def handle_terminal_command(message: types.Message):\n    if message.text == \"\u2b05\ufe0f Annuler\":\n        user_states.pop(message.from_user.id, None)\n        await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n        return\n    \n    if message.text == \"saisir la commande manuellement\":\n        user_states[message.from_user.id] = \"manual_command_input\"\n        await message.reply(\"\ud83d\udcdd Entrez maintenant la commande \u00e0 ex\u00e9cuter:\")\n        return\n    \n    command = message.text\n    await message.reply(f\"\u2699\ufe0f Ex\u00e9cution de la commande: `{command}`\", parse_mode=\"Markdown\")\n    \n    try:\n        process = await asyncio.create_subprocess_shell(\n            command,\n            stdout=subprocess.PIPE,\n            stderr=subprocess.PIPE\n        )\n        \n        stdout, stderr = await process.communicate()\n        \n        if stdout:\n            output = stdout.decode()\n            if len(output) > 4000:\n                output = output[:4000] + \"\\n... (sortie tronqu\u00e9e)\"\n            await message.reply(f\"\ud83d\udce4 Sortie:\\n```\\n{output}\\n```\", parse_mode=\"Markdown\")\n        \n        if stderr:\n            error = stderr.decode()\n            if len(error) > 4000:\n                error = error[:4000] + \"\\n... (erreur tronqu\u00e9e)\"\n            await message.reply(f\"\u26a0\ufe0f Erreur:\\n```\\n{error}\\n```\", parse_mode=\"Markdown\")\n        \n        if process.returncode == 0:\n            await message.reply(\"\u2705 Commande ex\u00e9cut\u00e9e avec succ\u00e8s!\")\n        else:\n            await message.reply(f\"\u274c Commande termin\u00e9e avec le code de sortie: {process.returncode}\")\n    \n    except Exception as e:\n        await message.reply(f\"\u26a0\ufe0f Erreur lors de l'ex\u00e9cution de la commande: {str(e)}\")\n    \n    user_states.pop(message.from_user.id, None)\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n# Gestion de l'intervalle Keep-Alive\n@dp.message_handler(lambda message: user_states.get(message.from_user.id) == \"keep_alive_interval\" and message.from_user.id in ADMINS)\nasync def handle_keep_alive_interval(message: types.Message):\n    global KEEP_ALIVE_INTERVAL\n    \n    if message.text == \"\u2b05\ufe0f Annuler\":\n        user_states.pop(message.from_user.id, None)\n        await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n        return\n    \n    try:\n        new_interval = int(message.text)\n        if new_interval < 30:\n            await message.reply(\"\u26a0\ufe0f L'intervalle minimum est de 30 secondes. Veuillez entrer une valeur \u2265 30.\")\n            return\n        if new_interval > 300:\n            await message.reply(\"\u26a0\ufe0f L'intervalle maximum est de 300 secondes (5 minutes).\")\n            return\n        \n        KEEP_ALIVE_INTERVAL = new_interval\n        await message.reply(f\"\u2705 Intervalle Keep-Alive modifi\u00e9 avec succ\u00e8s: {new_interval} secondes\")\n    except ValueError:\n        await message.reply(\"\u26a0\ufe0f Veuillez entrer un nombre valide de secondes.\")\n    \n    user_states.pop(message.from_user.id, None)\n    await message.reply(\"\u2699\ufe0f Configuration Keep-Alive\", reply_markup=keep_alive_config_keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\udd10 Mode priv\u00e9\" and message.from_user.id in ADMINS)\nasync def set_private_mode(message: types.Message):\n    global BOT_MODE\n    BOT_MODE = \"private\"\n    await message.reply(\"\u2705 Le bot est maintenant en mode priv\u00e9 (admins seulement)\")\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\ud83c\udf0d Mode public\" and message.from_user.id in ADMINS)\nasync def set_public_mode(message: types.Message):\n    global BOT_MODE\n    BOT_MODE = \"public\"\n    await message.reply(\"\u2705 Le bot est maintenant en mode public (tout le monde)\")\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\udccb Liste de tous les scripts\" and message.from_user.id in ADMINS)\nasync def list_all_scripts(message: types.Message):\n    MAX_MESSAGE_LENGTH = 4000\n    \n    text = \"\ud83d\udcdc Liste des scripts de tous les utilisateurs:\\n\"\n    messages = [text]\n    current_length = len(text)\n    \n    for user_id in os.listdir(BASE_DIR):\n        user_folder = os.path.join(BASE_DIR, str(user_id))\n        if os.path.isdir(user_folder):\n            scripts = os.listdir(user_folder)\n            user_text = f\"\\n\ud83d\udc64 {user_id}:\\n\"\n            \n            for script in scripts:\n                status = \"\ud83d\udfe2 Actif\" if (int(user_id), script) in processes and processes[(int(user_id), script)].returncode is None else \"\ud83d\udd34 Arr\u00eat\u00e9\"\n                script_line = f\" - {script}: {status}\\n\"\n                \n                if current_length + len(user_text) + len(script_line) > MAX_MESSAGE_LENGTH:\n                    messages.append(\"\ud83d\udcdc Liste des scripts (suite):\\n\")\n                    current_length = len(messages[-1])\n                \n                messages[-1] += user_text + script_line\n                current_length += len(user_text) + len(script_line)\n                user_text = \"\"\n    \n    for msg in messages:\n        await message.reply(msg)\n    \n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\udd12 Bannir un utilisateur\" and message.from_user.id in ADMINS)\nasync def ban_user_prompt(message: types.Message):\n    user_states[message.from_user.id] = \"ban_user\"\n    await message.reply(\"\ud83d\udcdd Envoyez l'ID de l'utilisateur \u00e0 bannir:\")\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\udd13 D\u00e9bannir un utilisateur\" and message.from_user.id in ADMINS)\nasync def unban_user_prompt(message: types.Message):\n    user_states[message.from_user.id] = \"unban_user\"\n    await message.reply(\"\ud83d\udcdd Envoyez l'ID de l'utilisateur \u00e0 d\u00e9bannir:\")\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\udcbe Sauvegarder scripts utilisateur\" and message.from_user.id in ADMINS)\nasync def save_user_prompt(message: types.Message):\n    user_states[message.from_user.id] = \"save_user\"\n    await message.reply(\"\ud83d\udcdd Envoyez l'ID de l'utilisateur dont vous voulez sauvegarder les scripts:\")\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\uded1 Arr\u00eater/supprimer script utilisateur\" and message.from_user.id in ADMINS)\nasync def admin_stop_script_prompt(message: types.Message):\n    user_states[message.from_user.id] = \"admin_stop_script_user\"\n    await message.reply(\"\ud83d\udcdd Envoyez l'ID de l'utilisateur dont vous voulez arr\u00eater/supprimer les scripts:\")\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\udda5 \u00c9tat du syst\u00e8me\" and message.from_user.id in ADMINS)\nasync def system_status(message: types.Message):\n    \"\"\"Affiche l'\u00e9tat du syst\u00e8me\"\"\"\n    await message.reply(\"\ud83d\udd0d R\u00e9cup\u00e9ration de l'\u00e9tat du syst\u00e8me...\")\n    try:\n        status_text = get_system_status()\n        await message.reply(status_text, parse_mode=\"Markdown\")\n    except Exception as e:\n        await message.reply(f\"\u26a0\ufe0f Erreur lors de la r\u00e9cup\u00e9ration de l'\u00e9tat du syst\u00e8me: {str(e)}\")\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n# ==================== COMMANDES UTILISATEUR ====================\n@dp.message_handler(lambda message: message.text == \"\u2795 Ajouter un script\")\nasync def prompt_add_script(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    if message.from_user.id in banned_users:\n        await message.reply(\"\ud83d\udeab Vous \u00eates banni de ce bot.\")\n        return\n    \n    user_states[message.from_user.id] = \"ajout_script\"\n    await message.reply(\"\ud83d\udce4 Envoyez-moi un fichier **.py** \u00e0 ajouter.\")\n\n@dp.message_handler(content_types=['document'])\nasync def handle_script_upload(message: types.Message):\n    user_id = message.from_user.id\n    \n    if user_states.get(message.from_user.id) != \"ajout_script\":\n        return\n    \n    if user_id in banned_users:\n        await message.reply(\"\ud83d\udeab Vous \u00eates banni de ce bot.\")\n        return\n\n    document = message.document\n    if not document.file_name.endswith(\".py\"):\n        await message.reply(\"\u26a0\ufe0f Seuls les fichiers `.py` sont accept\u00e9s.\")\n        return\n\n    user_folder = os.path.join(BASE_DIR, str(user_id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    if user_id not in ADMINS:\n        existing_files = os.listdir(user_folder)\n        if len(existing_files) >= 4:\n            await message.reply(\"\u26a0\ufe0f Vous ne pouvez pas avoir plus de 4 scripts. Supprimez-en un d'abord.\")\n            return\n\n    file_path = os.path.join(user_folder, document.file_name)\n    \n    try:\n        file = await bot.get_file(document.file_id)\n        await bot.download_file(file.file_path, file_path)\n        await message.reply(f\"\u2705 Le script **{document.file_name}** a \u00e9t\u00e9 ajout\u00e9 avec succ\u00e8s!\")\n    except Exception as e:\n        await message.reply(f\"\u274c Erreur lors du t\u00e9l\u00e9chargement: {str(e)}\")\n    \n    user_states.pop(user_id, None)\n\n@dp.message_handler(lambda message: message.text == \"\u274c Arr\u00eater et supprimer un script\")\nasync def stop_and_delete_script(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    user_id = message.from_user.id\n    user_states[user_id] = \"suppression\"\n\n    user_folder = os.path.join(BASE_DIR, str(user_id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    files = os.listdir(user_folder)\n    if not files:\n        await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9 \u00e0 supprimer.\")\n        return\n\n    buttons = [KeyboardButton(text=file) for file in files]\n    keyboard_layout = [buttons[i:i+2] for i in range(0, len(buttons), 2)]\n    keyboard_layout.append([KeyboardButton(text=\"\u2b05\ufe0f Retour au menu principal\")])\n\n    keyboard = ReplyKeyboardMarkup(keyboard=keyboard_layout, resize_keyboard=True)\n    await message.reply(\"\ud83d\udd0d Choisissez un script \u00e0 arr\u00eater et supprimer:\", reply_markup=keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\ud83d\udcdc Liste des scripts\")\nasync def list_codes(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    user_id = message.from_user.id\n    user_folder = os.path.join(BASE_DIR, str(user_id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    files = os.listdir(user_folder)\n    if not files:\n        await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9.\")\n        return\n\n    status = {file: \"\ud83d\udfe2 Actif\" if (user_id, file) in processes and processes[(user_id, file)].returncode is None else \"\ud83d\udd34 Arr\u00eat\u00e9\" for file in files}\n    response = \"\\n\".join([f\"{file}: {state}\" for file, state in status.items()])\n    await message.reply(f\"\ud83d\udcc2 Vos scripts:\\n{response}\")\n\n@dp.message_handler(lambda message: message.text == \"\u25b6\ufe0f Ex\u00e9cuter un script\")\nasync def list_files_for_running(message: types.Message):\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    user_id = message.from_user.id\n    user_states[user_id] = \"execution\"\n\n    user_folder = os.path.join(BASE_DIR, str(user_id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    files = os.listdir(user_folder)\n    if not files:\n        await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9.\")\n        return\n\n    buttons = [KeyboardButton(text=file) for file in files]\n    keyboard_layout = [buttons[i:i+2] for i in range(0, len(buttons), 2)]\n    keyboard_layout.append([KeyboardButton(text=\"\u2b05\ufe0f Retour au menu principal\")])\n\n    keyboard = ReplyKeyboardMarkup(keyboard=keyboard_layout, resize_keyboard=True)\n    await message.reply(\"\ud83d\udd0d Choisissez un script \u00e0 ex\u00e9cuter:\", reply_markup=keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\u2b05\ufe0f Retour au menu principal\")\nasync def return_to_main_menu(message: types.Message):\n    user_id = message.from_user.id\n    user_states.pop(user_id, None)\n    keyboard = admin_keyboard if user_id in ADMINS else main_keyboard\n    await message.reply(\"\ud83c\udfe0 Retour au menu principal.\", reply_markup=keyboard)\n\n@dp.message_handler(lambda message: message.text == \"\u2b05\ufe0f Retour au panel admin\" and message.from_user.id in ADMINS)\nasync def return_to_admin_panel(message: types.Message):\n    await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n\n# ==================== GESTION DES ACTIONS UTILISATEUR (HANDLER G\u00c9N\u00c9RAL) ====================\n@dp.message_handler()\nasync def handle_user_action(message: types.Message):\n    # V\u00e9rifier d'abord le mode du bot\n    if BOT_MODE == \"private\" and message.from_user.id not in ADMINS:\n        await message.reply(\"\ud83d\udeab Le bot est en mode priv\u00e9, seuls les admins peuvent l'utiliser.\")\n        return\n    \n    if message.from_user.id in banned_users:\n        await message.reply(\"\ud83d\udeab Vous \u00eates banni de ce bot.\")\n        return\n\n    # Traiter d'abord les commandes admin\n    if message.from_user.id in ADMINS:\n        if user_states.get(message.from_user.id) == \"ban_user\":\n            try:\n                banned_user_id = int(message.text)\n                banned_users.add(banned_user_id)\n                await message.reply(f\"\u2705 L'utilisateur {banned_user_id} a \u00e9t\u00e9 banni avec succ\u00e8s.\")\n            except ValueError:\n                await message.reply(\"\u26a0\ufe0f Veuillez entrer un ID utilisateur valide (chiffres seulement)\")\n            user_states.pop(message.from_user.id, None)\n            await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n            return\n\n        elif user_states.get(message.from_user.id) == \"unban_user\":\n            try:\n                unbanned_user_id = int(message.text)\n                banned_users.discard(unbanned_user_id)\n                await message.reply(f\"\u2705 L'utilisateur {unbanned_user_id} a \u00e9t\u00e9 d\u00e9banni avec succ\u00e8s.\")\n            except ValueError:\n                await message.reply(\"\u26a0\ufe0f Veuillez entrer un ID utilisateur valide (chiffres seulement)\")\n            user_states.pop(message.from_user.id, None)\n            await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n            return\n\n        elif user_states.get(message.from_user.id) == \"save_user\":\n            try:\n                target_user_id = int(message.text)\n                user_folder = os.path.join(BASE_DIR, str(target_user_id))\n                \n                if not os.path.exists(user_folder):\n                    await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9 pour cet utilisateur.\")\n                    user_states.pop(message.from_user.id, None)\n                    return\n                \n                files = os.listdir(user_folder)\n                if not files:\n                    await message.reply(\"\ud83d\udeab Cet utilisateur n'a aucun script.\")\n                    user_states.pop(message.from_user.id, None)\n                    return\n                \n                for file in files:\n                    try:\n                        with open(os.path.join(user_folder, file), 'rb') as f:\n                            await message.answer_document(\n                                f,\n                                caption=f\"Script {file} de l'utilisateur {target_user_id}\"\n                            )\n                        await asyncio.sleep(1)\n                    except Exception as e:\n                        await message.reply(f\"\u26a0\ufe0f Erreur lors de l'envoi du fichier {file}: {str(e)}\")\n                \n                await message.reply(\"\u2705 Tous les scripts ont \u00e9t\u00e9 envoy\u00e9s avec succ\u00e8s.\")\n            except ValueError:\n                await message.reply(\"\u26a0\ufe0f Veuillez entrer un ID utilisateur valide (chiffres seulement)\")\n            except Exception as e:\n                await message.reply(f\"\u26a0\ufe0f Une erreur inattendue est survenue: {str(e)}\")\n            \n            user_states.pop(message.from_user.id, None)\n            await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n            return\n\n        elif user_states.get(message.from_user.id) == \"admin_stop_script_user\":\n            try:\n                target_user_id = int(message.text)\n                user_folder = os.path.join(BASE_DIR, str(target_user_id))\n                if not os.path.exists(user_folder):\n                    await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9 pour cet utilisateur.\")\n                    user_states.pop(message.from_user.id, None)\n                    return\n                \n                files = os.listdir(user_folder)\n                if not files:\n                    await message.reply(\"\ud83d\udeab Aucun script trouv\u00e9 pour cet utilisateur.\")\n                    user_states.pop(message.from_user.id, None)\n                    return\n                \n                user_states[message.from_user.id] = (\"admin_stop_script_select\", target_user_id)\n                \n                buttons = [KeyboardButton(text=file) for file in files]\n                keyboard_layout = [buttons[i:i+2] for i in range(0, len(files), 2)]\n                keyboard_layout.append([KeyboardButton(text=\"\u2b05\ufe0f Retour au menu principal\")])\n\n                keyboard = ReplyKeyboardMarkup(keyboard=keyboard_layout, resize_keyboard=True)\n                await message.reply(f\"\ud83d\udd0d Choisissez un script de l'utilisateur {target_user_id} \u00e0 arr\u00eater/supprimer:\", reply_markup=keyboard)\n                return\n                \n            except ValueError:\n                await message.reply(\"\u26a0\ufe0f Veuillez entrer un ID utilisateur valide (chiffres seulement)\")\n                user_states.pop(message.from_user.id, None)\n                await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n                return\n\n        elif isinstance(user_states.get(message.from_user.id), tuple) and user_states[message.from_user.id][0] == \"admin_stop_script_select\":\n            target_user_id = user_states[message.from_user.id][1]\n            filename = message.text\n            \n            if filename == \"\u2b05\ufe0f Retour au menu principal\":\n                user_states.pop(message.from_user.id, None)\n                keyboard = admin_keyboard if message.from_user.id in ADMINS else main_keyboard\n                await message.reply(\"\ud83c\udfe0 Retour au menu principal.\", reply_markup=keyboard)\n                return\n            \n            file_path = os.path.join(BASE_DIR, str(target_user_id), filename)\n            \n            process_stopped = False\n            if (target_user_id, filename) in processes:\n                process = processes[(target_user_id, filename)]\n                if process.returncode is None:\n                    try:\n                        process.terminate()\n                        try:\n                            await asyncio.wait_for(process.wait(), timeout=3)\n                            process_stopped = True\n                        except asyncio.TimeoutError:\n                            process.kill()\n                            process_stopped = True\n                        await message.reply(f\"\u26d4 Le script {filename} a \u00e9t\u00e9 arr\u00eat\u00e9 avec succ\u00e8s.\")\n                    except Exception as e:\n                        await message.reply(f\"\u26a0\ufe0f Erreur lors de l'arr\u00eat du script: {str(e)}\")\n                    finally:\n                        if (target_user_id, filename) in processes:\n                            del processes[(target_user_id, filename)]\n            \n            try:\n                if os.path.exists(file_path):\n                    os.remove(file_path)\n                    await message.reply(f\"\u2705 Le script {filename} de l'utilisateur {target_user_id} a \u00e9t\u00e9 supprim\u00e9 avec succ\u00e8s.\")\n                else:\n                    if not process_stopped:\n                        await message.reply(f\"\u26a0\ufe0f Le fichier {filename} n'existe pas pour l'utilisateur {target_user_id}.\")\n            except Exception as e:\n                await message.reply(f\"\u26a0\ufe0f Erreur lors de la suppression du script: {str(e)}\")\n\n            user_states.pop(message.from_user.id, None)\n            await message.reply(\"\ud83d\udc51 Panel d'administration\", reply_markup=admin_panel_keyboard)\n            return\n\n    # Traiter les commandes normales\n    user_folder = os.path.join(BASE_DIR, str(message.from_user.id))\n    os.makedirs(user_folder, exist_ok=True)\n\n    user_files = os.listdir(user_folder)\n    filename = message.text\n    file_path = os.path.join(user_folder, filename)\n\n    if filename not in user_files:\n        return\n\n    if user_states.get(message.from_user.id) == \"execution\":\n        missing_libraries = check_and_install_libraries(file_path)\n\n        if missing_libraries:\n            await message.reply(f\"\u26a0\ufe0f Biblioth\u00e8ques manquantes install\u00e9es:\\n\" + \"\\n\".join(missing_libraries))\n        else:\n            await message.reply(f\"\u2705 Toutes les biblioth\u00e8ques sont d\u00e9j\u00e0 install\u00e9es.\")\n\n        await message.reply(f\"\ud83d\ude80 Ex\u00e9cution du script {filename}...\")\n        \n        try:\n            process = await asyncio.create_subprocess_exec(\n                'python', file_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE\n            )\n            processes[(message.from_user.id, filename)] = process\n\n            stdout, stderr = await process.communicate()\n\n            if stdout:\n                await message.reply(f\"\ud83d\udce4 Sortie:\\n```\\n{stdout.decode()}\\n```\", parse_mode=\"Markdown\")\n            if stderr:\n                await message.reply(f\"\u26a0\ufe0f Erreurs:\\n```\\n{stderr.decode()}\\n```\", parse_mode=\"Markdown\")\n        except Exception as e:\n            await message.reply(f\"\u274c Erreur lors de l'ex\u00e9cution: {str(e)}\")\n\n        user_states.pop(message.from_user.id, None)\n\n    elif user_states.get(message.from_user.id) == \"suppression\":\n        if (message.from_user.id, filename) in processes:\n            process = processes[(message.from_user.id, filename)]\n            if process.returncode is None:\n                process.terminate()\n                try:\n                    await process.wait(timeout=5)\n                except asyncio.TimeoutError:\n                    process.kill()\n            del processes[(message.from_user.id, filename)]\n\n        if os.path.exists(file_path):\n            os.remove(file_path)\n            await message.reply(f\"\u2705 Le script {filename} a \u00e9t\u00e9 supprim\u00e9 avec succ\u00e8s.\")\n        else:\n            await message.reply(f\"\u26a0\ufe0f Le fichier {filename} n'existe pas.\")\n\n        user_states.pop(message.from_user.id, None)\n\n# Fonction pour v\u00e9rifier et installer les biblioth\u00e8ques\ndef check_and_install_libraries(file_path):\n    try:\n        with open(file_path, 'r') as file:\n            script_content = file.read()\n    except Exception as e:\n        print(f\"Erreur de lecture du fichier: {e}\")\n        return []\n\n    imports = [line for line in script_content.splitlines() if line.startswith(\"import\") or line.startswith(\"from\")]\n    missing_libraries = []\n\n    for imp in imports:\n        try:\n            if imp.startswith(\"import\"):\n                module = imp.split()[1]\n                importlib.import_module(module)\n            elif imp.startswith(\"from\"):\n                module = imp.split()[1]\n                importlib.import_module(module)\n        except ImportError:\n            module = imp.split()[1]\n            missing_libraries.append(module)\n\n    if missing_libraries:\n        for lib in missing_libraries:\n            try:\n                subprocess.run([\"pip\", \"install\", lib], check=True)\n            except subprocess.CalledProcessError as e:\n                print(f\"Erreur lors de l'installation de {lib}: {e}\")\n\n    return missing_libraries\n\n# ==================== FONCTION PRINCIPALE ====================\nasync def main():\n    # D\u00e9marrer le serveur Flask\n    start_flask_server()\n    \n    # Ne d\u00e9marrer la t\u00e2che keep-alive que si ce n'est pas en localhost\n    if 'localhost' not in KEEP_ALIVE_URL and '127.0.0.1' not in KEEP_ALIVE_URL:\n        asyncio.create_task(keep_alive_task())\n        print(f\"\ud83d\udce1 Keep-Alive actif pour {KEEP_ALIVE_URL}\")\n    else:\n        print(\"\ud83d\udce1 Keep-Alive en mode local (pas d'auto-ping n\u00e9cessaire)\")\n    \n    # D\u00e9marrer la surveillance de red\u00e9marrage automatique\n    asyncio.create_task(auto_restart_bot())\n    \n    print(f\"\ud83c\udf10 Serveur Flask actif\")\n    print(f\"\ud83e\udd16 Bot d\u00e9marr\u00e9 avec succ\u00e8s!\")\n    print(f\"\ud83d\udd04 Surveillance de red\u00e9marrage automatique active\")\n    \n    try:\n        # D\u00e9marrer le polling du bot\n        await dp.start_polling()\n    except Exception as e:\n        print(f\"\u274c Erreur lors du polling: {e}\")\n        # Tentative de red\u00e9marrage\n        await asyncio.sleep(5)\n        await dp.start_polling()\n\nif __name__ == \"__main__\":\n    try:\n        asyncio.run(main())\n    except KeyboardInterrupt:\n        print(\"Arr\u00eat du bot...\")\n        cleanup_processes()\n    except Exception as e:\n        print(f\"Erreur fatale: {e}\")\n        cleanup_processes()",
+      "createdAt": "2026-07-05T10:59:51.862Z",
+      "updatedAt": "2026-07-05T11:09:53.748Z",
+      "size": 49945,
+      "status": "error",
+      "autoInstall": true,
+      "lastRun": "2026-07-05T11:10:27.928Z"
+    }
+  },
+  "logs": [
+    {
+      "id": "bb6mjvwo1",
+      "scriptId": "ertupw4o5",
+      "type": "system",
+      "message": "D\u00e9marrage de l'ex\u00e9cution de baithek12.py",
+      "timestamp": "2026-07-05T09:51:52.910Z"
+    },
+    {
+      "id": "0crd7rznp",
+      "scriptId": "v49shvaav",
+      "type": "system",
+      "message": "D\u00e9marrage de l'ex\u00e9cution de compression4.py",
+      "timestamp": "2026-07-05T10:36:20.962Z"
+    },
+    {
+      "id": "xfkzxlo1z",
+      "scriptId": "v49shvaav",
+      "type": "stdout",
+      "message": "\ud83e\udd16 Bot pr\u00eat \u2013 compression PDF professionnelle",
+      "timestamp": "2026-07-05T10:36:22.154Z"
+    },
+    {
+      "id": "xj6zhtfdi",
+      "scriptId": "v49shvaav",
+      "type": "system",
+      "message": "Le script a \u00e9t\u00e9 forc\u00e9 \u00e0 l'arr\u00eat (Aucun processus actif trouv\u00e9).",
+      "timestamp": "2026-07-05T10:41:13.336Z"
+    },
+    {
+      "id": "kq9s9xe5x",
+      "scriptId": "v49shvaav",
+      "type": "system",
+      "message": "Script interrompu par le signal SIGKILL",
+      "timestamp": "2026-07-05T10:41:15.339Z"
+    },
+    {
+      "id": "psbo8vsrx",
+      "scriptId": "dniscd0l4",
+      "type": "system",
+      "message": "D\u00e9marrage de l'ex\u00e9cution de istidafa7_by_moon.py",
+      "timestamp": "2026-07-05T10:43:42.138Z"
+    },
+    {
+      "id": "pup0z4aez",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "\u2705 Serveur Flask d\u00e9marr\u00e9 sur le port 8080",
+      "timestamp": "2026-07-05T10:43:51.969Z"
+    },
+    {
+      "id": "wcua27ohw",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "\ud83e\udd16 Bot d\u00e9marr\u00e9 avec succ\u00e8s!",
+      "timestamp": "2026-07-05T10:43:51.970Z"
+    },
+    {
+      "id": "e5platlh6",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "\ud83d\udce1 Keep-Alive configur\u00e9 pour https://64b7f441-1e0c-4fea-8c2a-daf518f3f89c.e1-eu-west-cdp.choreoapps.dev/ toutes les 20 secondes",
+      "timestamp": "2026-07-05T10:43:51.970Z"
+    },
+    {
+      "id": "m6xcmyt48",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": " * Serving Flask app 'istidafa7_by_moon'",
+      "timestamp": "2026-07-05T10:43:51.971Z"
+    },
+    {
+      "id": "lbgsbatua",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": " * Debug mode: off",
+      "timestamp": "2026-07-05T10:43:51.972Z"
+    },
+    {
+      "id": "d3m2mzm9c",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "\ud83c\udf10 Serveur Flask actif sur le port 8080",
+      "timestamp": "2026-07-05T10:43:51.972Z"
+    },
+    {
+      "id": "o3xvrqqxu",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "\ud83d\udd04 Service Keep-Alive d\u00e9marr\u00e9",
+      "timestamp": "2026-07-05T10:43:51.973Z"
+    },
+    {
+      "id": "3rvy7r7s2",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "Address already in use",
+      "timestamp": "2026-07-05T10:43:51.973Z"
+    },
+    {
+      "id": "nyyku2z0n",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "Port 8080 is in use by another program. Either identify and stop that program, or start the server with a different port.",
+      "timestamp": "2026-07-05T10:43:51.973Z"
+    },
+    {
+      "id": "w4hqqt59t",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "\ud83d\udce1 Keep-Alive - Statut: 200",
+      "timestamp": "2026-07-05T10:43:52.130Z"
+    },
+    {
+      "id": "reuv86zb9",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "\u2705 Requ\u00eate Keep-Alive r\u00e9ussie!",
+      "timestamp": "2026-07-05T10:43:52.131Z"
+    },
+    {
+      "id": "jisf7zq4k",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "\ud83d\udce1 Keep-Alive - Statut: 200",
+      "timestamp": "2026-07-05T10:44:12.275Z"
+    },
+    {
+      "id": "7n9igkjqn",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "\u2705 Requ\u00eate Keep-Alive r\u00e9ussie!",
+      "timestamp": "2026-07-05T10:44:12.276Z"
+    },
+    {
+      "id": "mwn2tp8br",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "Collecting psutil",
+      "timestamp": "2026-07-05T10:46:01.117Z"
+    },
+    {
+      "id": "5qie0cvke",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "  Downloading psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl.metadata (22 kB)",
+      "timestamp": "2026-07-05T10:46:01.239Z"
+    },
+    {
+      "id": "knqfk1lw2",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "Downloading psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl (155 kB)",
+      "timestamp": "2026-07-05T10:46:01.271Z"
+    },
+    {
+      "id": "l7z65tqku",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "Installing collected packages: psutil",
+      "timestamp": "2026-07-05T10:46:01.515Z"
+    },
+    {
+      "id": "t8nlnm1sh",
+      "scriptId": "dniscd0l4",
+      "type": "stdout",
+      "message": "Successfully installed psutil-7.2.2",
+      "timestamp": "2026-07-05T10:46:01.605Z"
+    },
+    {
+      "id": "l4el9n6n8",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.",
+      "timestamp": "2026-07-05T10:46:01.606Z"
+    },
+    {
+      "id": "2fr94t7sw",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "Cause exception while process update id=69644558 by bot id=8958637473",
+      "timestamp": "2026-07-05T10:48:05.995Z"
+    },
+    {
+      "id": "xtt8lr9a8",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "TypeError: Process.wait() got an unexpected keyword argument 'timeout'",
+      "timestamp": "2026-07-05T10:48:05.996Z"
+    },
+    {
+      "id": "3lnqbjd7h",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "Traceback (most recent call last):",
+      "timestamp": "2026-07-05T10:48:05.997Z"
+    },
+    {
+      "id": "takocgih7",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/dispatcher.py\", line 320, in _process_update",
+      "timestamp": "2026-07-05T10:48:05.997Z"
+    },
+    {
+      "id": "1wkaz434c",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    response = await self.feed_update(bot, update, **kwargs)",
+      "timestamp": "2026-07-05T10:48:05.998Z"
+    },
+    {
+      "id": "kjv5y0ux8",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/dispatcher.py\", line 164, in feed_update",
+      "timestamp": "2026-07-05T10:48:05.998Z"
+    },
+    {
+      "id": "kobu7smrb",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    response = await self.update.wrap_outer_middleware(",
+      "timestamp": "2026-07-05T10:48:05.999Z"
+    },
+    {
+      "id": "nz8x61now",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/middlewares/error.py\", line 27, in __call__",
+      "timestamp": "2026-07-05T10:48:05.999Z"
+    },
+    {
+      "id": "m2e2b964f",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await handler(event, data)",
+      "timestamp": "2026-07-05T10:48:06.000Z"
+    },
+    {
+      "id": "gdch46iyy",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/middlewares/user_context.py\", line 58, in __call__",
+      "timestamp": "2026-07-05T10:48:06.000Z"
+    },
+    {
+      "id": "opii304jm",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await handler(event, data)",
+      "timestamp": "2026-07-05T10:48:06.002Z"
+    },
+    {
+      "id": "0p95otg0y",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/fsm/middleware.py\", line 43, in __call__",
+      "timestamp": "2026-07-05T10:48:06.002Z"
+    },
+    {
+      "id": "37tnuncah",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await handler(event, data)",
+      "timestamp": "2026-07-05T10:48:06.003Z"
+    },
+    {
+      "id": "elamxj338",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/event/telegram.py\", line 126, in trigger",
+      "timestamp": "2026-07-05T10:48:06.003Z"
+    },
+    {
+      "id": "wqsxt7jqn",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await wrapped_inner(event, kwargs)",
+      "timestamp": "2026-07-05T10:48:06.004Z"
+    },
+    {
+      "id": "x7c04oq27",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/event/handler.py\", line 71, in call",
+      "timestamp": "2026-07-05T10:48:06.004Z"
+    },
+    {
+      "id": "0c1wf8cf5",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await wrapped()",
+      "timestamp": "2026-07-05T10:48:06.005Z"
+    },
+    {
+      "id": "vxfmdcfxn",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/dispatcher.py\", line 283, in _listen_update",
+      "timestamp": "2026-07-05T10:48:06.005Z"
+    },
+    {
+      "id": "tikvuaj2v",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await self.propagate_event(update_type=update_type, event=event, **kwargs)",
+      "timestamp": "2026-07-05T10:48:06.006Z"
+    },
+    {
+      "id": "g37wb83mf",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/router.py\", line 165, in propagate_event",
+      "timestamp": "2026-07-05T10:48:06.007Z"
+    },
+    {
+      "id": "cp2hi7q2o",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)",
+      "timestamp": "2026-07-05T10:48:06.007Z"
+    },
+    {
+      "id": "yvqd3oi13",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/router.py\", line 157, in _wrapped",
+      "timestamp": "2026-07-05T10:48:06.008Z"
+    },
+    {
+      "id": "ec3qcxs71",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await self._propagate_event(",
+      "timestamp": "2026-07-05T10:48:06.008Z"
+    },
+    {
+      "id": "umbmclg38",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/router.py\", line 185, in _propagate_event",
+      "timestamp": "2026-07-05T10:48:06.009Z"
+    },
+    {
+      "id": "x7otmwg4d",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    response = await observer.trigger(event, **kwargs)",
+      "timestamp": "2026-07-05T10:48:06.009Z"
+    },
+    {
+      "id": "zcsg8h4ih",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/event/telegram.py\", line 126, in trigger",
+      "timestamp": "2026-07-05T10:48:06.009Z"
+    },
+    {
+      "id": "9umifgj3s",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await wrapped_inner(event, kwargs)",
+      "timestamp": "2026-07-05T10:48:06.010Z"
+    },
+    {
+      "id": "xep1vlvni",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/event/handler.py\", line 71, in call",
+      "timestamp": "2026-07-05T10:48:06.011Z"
+    },
+    {
+      "id": "ygp9fxwb3",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    return await wrapped()",
+      "timestamp": "2026-07-05T10:48:06.011Z"
+    },
+    {
+      "id": "wqque6c9s",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "  File \"/app/applet/hosted_scripts/istidafa7_by_moon.py\", line 686, in handle_user_action",
+      "timestamp": "2026-07-05T10:48:06.012Z"
+    },
+    {
+      "id": "0sq5t5dz0",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "    await process.wait(timeout=5)",
+      "timestamp": "2026-07-05T10:48:06.012Z"
+    },
+    {
+      "id": "ng05d3sj8",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "TypeError: Process.wait() got an unexpected keyword argument 'timeout'",
+      "timestamp": "2026-07-05T10:48:06.013Z"
+    },
+    {
+      "id": "8gnfnydm4",
+      "scriptId": "5jezlghvp",
+      "type": "system",
+      "message": "D\u00e9marrage de l'ex\u00e9cution de keep_alive_new_2026.py",
+      "timestamp": "2026-07-05T10:51:07.590Z"
+    },
+    {
+      "id": "4d7nt09v5",
+      "scriptId": "5jezlghvp",
+      "type": "stdout",
+      "message": "\u2705 \u0633\u064a\u0631\u0641\u0631 Flask \u064a\u0639\u0645\u0644 \u0639\u0644\u0649 port 3000",
+      "timestamp": "2026-07-05T10:51:08.501Z"
+    },
+    {
+      "id": "wyc4uyjx4",
+      "scriptId": "5jezlghvp",
+      "type": "stdout",
+      "message": " * Serving Flask app 'keep_alive_new_2026'",
+      "timestamp": "2026-07-05T10:51:08.502Z"
+    },
+    {
+      "id": "pthy4k1wt",
+      "scriptId": "5jezlghvp",
+      "type": "stdout",
+      "message": " * Debug mode: off",
+      "timestamp": "2026-07-05T10:51:08.503Z"
+    },
+    {
+      "id": "azqnv2bio",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "Address already in use",
+      "timestamp": "2026-07-05T10:51:08.503Z"
+    },
+    {
+      "id": "urkohupgo",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "Port 3000 is in use by another program. Either identify and stop that program, or start the server with a different port.",
+      "timestamp": "2026-07-05T10:51:08.504Z"
+    },
+    {
+      "id": "i5vjltznh",
+      "scriptId": "5jezlghvp",
+      "type": "stdout",
+      "message": "\ud83d\udd04 \u0628\u062f\u0621 \u062e\u062f\u0645\u0629 Keep-Alive",
+      "timestamp": "2026-07-05T10:51:08.645Z"
+    },
+    {
+      "id": "0aluz3tzd",
+      "scriptId": "5jezlghvp",
+      "type": "stdout",
+      "message": "\ud83c\udfaf \u0627\u0644\u0647\u062f\u0641: http://34.34.246.89:3000",
+      "timestamp": "2026-07-05T10:51:08.647Z"
+    },
+    {
+      "id": "ahhr5eeqc",
+      "scriptId": "5jezlghvp",
+      "type": "stdout",
+      "message": "\u23f1\ufe0f \u0643\u0644 45 \u062b\u0627\u0646\u064a\u0629",
+      "timestamp": "2026-07-05T10:51:08.647Z"
+    },
+    {
+      "id": "sq3bnyyxx",
+      "scriptId": "5jezlghvp",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f95ac8b6c20>, 'Connection to 34.34.246.89 timed out. (connect timeout=10)'))",
+      "timestamp": "2026-07-05T10:51:18.648Z"
+    },
+    {
+      "id": "2j7jftvd3",
+      "scriptId": "5jezlghvp",
+      "type": "system",
+      "message": "Le script a \u00e9t\u00e9 forc\u00e9 \u00e0 l'arr\u00eat (Aucun processus actif trouv\u00e9).",
+      "timestamp": "2026-07-05T10:51:19.823Z"
+    },
+    {
+      "id": "oqq1hfvne",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "Traceback (most recent call last):",
+      "timestamp": "2026-07-05T10:51:19.825Z"
+    },
+    {
+      "id": "vauz8p78m",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "  File \"/app/applet/hosted_scripts/keep_alive_new_2026.py\", line 112, in <module>",
+      "timestamp": "2026-07-05T10:51:19.826Z"
+    },
+    {
+      "id": "qig2whwac",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "    asyncio.run(keep_alive_loop())",
+      "timestamp": "2026-07-05T10:51:19.827Z"
+    },
+    {
+      "id": "cgpbq86ja",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/asyncio/runners.py\", line 44, in run",
+      "timestamp": "2026-07-05T10:51:19.828Z"
+    },
+    {
+      "id": "vkh2tj33r",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "    return loop.run_until_complete(main)",
+      "timestamp": "2026-07-05T10:51:19.829Z"
+    },
+    {
+      "id": "611rkwrx6",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/asyncio/base_events.py\", line 636, in run_until_complete",
+      "timestamp": "2026-07-05T10:51:19.830Z"
+    },
+    {
+      "id": "3rx2fssdv",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "    self.run_forever()",
+      "timestamp": "2026-07-05T10:51:19.831Z"
+    },
+    {
+      "id": "w94v8bczr",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/asyncio/base_events.py\", line 603, in run_forever",
+      "timestamp": "2026-07-05T10:51:19.832Z"
+    },
+    {
+      "id": "ykcbhxwr8",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "    self._run_once()",
+      "timestamp": "2026-07-05T10:51:19.833Z"
+    },
+    {
+      "id": "wlj3kqotm",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/asyncio/base_events.py\", line 1871, in _run_once",
+      "timestamp": "2026-07-05T10:51:19.833Z"
+    },
+    {
+      "id": "58501u91m",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "    event_list = self._selector.select(timeout)",
+      "timestamp": "2026-07-05T10:51:19.834Z"
+    },
+    {
+      "id": "40v3iwwem",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/selectors.py\", line 469, in select",
+      "timestamp": "2026-07-05T10:51:19.835Z"
+    },
+    {
+      "id": "wwu19rpqi",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "    fd_event_list = self._selector.poll(timeout, max_ev)",
+      "timestamp": "2026-07-05T10:51:19.836Z"
+    },
+    {
+      "id": "pmsxxtin3",
+      "scriptId": "5jezlghvp",
+      "type": "stderr",
+      "message": "KeyboardInterrupt",
+      "timestamp": "2026-07-05T10:51:19.837Z"
+    },
+    {
+      "id": "0pj4zn4d4",
+      "scriptId": "5jezlghvp",
+      "type": "system",
+      "message": "Script interrompu par le signal SIGINT",
+      "timestamp": "2026-07-05T10:51:19.887Z"
+    },
+    {
+      "id": "3m8krqted",
+      "scriptId": "dniscd0l4",
+      "type": "system",
+      "message": "Le script a \u00e9t\u00e9 forc\u00e9 \u00e0 l'arr\u00eat (Aucun processus actif trouv\u00e9).",
+      "timestamp": "2026-07-05T11:00:07.148Z"
+    },
+    {
+      "id": "lkn4r82pv",
+      "scriptId": "dniscd0l4",
+      "type": "stderr",
+      "message": "Received SIGINT signal",
+      "timestamp": "2026-07-05T11:00:07.150Z"
+    },
+    {
+      "id": "4zm32nw4q",
+      "scriptId": "dniscd0l4",
+      "type": "system",
+      "message": "Script termin\u00e9 avec le code de sortie 0",
+      "timestamp": "2026-07-05T11:00:08.002Z"
+    },
+    {
+      "id": "978pisbfd",
+      "scriptId": "ghx33pm6k",
+      "type": "system",
+      "message": "D\u00e9marrage de l'ex\u00e9cution de keep_alive_new_2026.py",
+      "timestamp": "2026-07-05T11:00:18.726Z"
+    },
+    {
+      "id": "brgom99qu",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u2705 \u0633\u064a\u0631\u0641\u0631 Flask \u064a\u0639\u0645\u0644 \u0639\u0644\u0649 port 3000",
+      "timestamp": "2026-07-05T11:00:19.748Z"
+    },
+    {
+      "id": "jomj4z6ai",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": " * Serving Flask app 'keep_alive_new_2026'",
+      "timestamp": "2026-07-05T11:00:19.750Z"
+    },
+    {
+      "id": "wirveim77",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": " * Debug mode: off",
+      "timestamp": "2026-07-05T11:00:19.751Z"
+    },
+    {
+      "id": "93dhkf6ls",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "Address already in use",
+      "timestamp": "2026-07-05T11:00:19.753Z"
+    },
+    {
+      "id": "avuay6kdq",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "Port 3000 is in use by another program. Either identify and stop that program, or start the server with a different port.",
+      "timestamp": "2026-07-05T11:00:19.754Z"
+    },
+    {
+      "id": "t98uxl46v",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\ud83d\udd04 \u0628\u062f\u0621 \u062e\u062f\u0645\u0629 Keep-Alive",
+      "timestamp": "2026-07-05T11:00:19.902Z"
+    },
+    {
+      "id": "dvdjyanqv",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\ud83c\udfaf \u0627\u0644\u0647\u062f\u0641: http://34.34.246.89:3000",
+      "timestamp": "2026-07-05T11:00:19.904Z"
+    },
+    {
+      "id": "g3likc8wf",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u23f1\ufe0f \u0643\u0644 1 \u062b\u0627\u0646\u064a\u0629",
+      "timestamp": "2026-07-05T11:00:19.905Z"
+    },
+    {
+      "id": "i462elw94",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6828f0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:20.905Z"
+    },
+    {
+      "id": "p3z07n0k9",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e683e50>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:22.909Z"
+    },
+    {
+      "id": "usx7bpwbc",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e0760>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:24.913Z"
+    },
+    {
+      "id": "kar5cxma6",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e1000>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:26.917Z"
+    },
+    {
+      "id": "n3zqqfosl",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6837f0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:28.921Z"
+    },
+    {
+      "id": "nl58j9yqh",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e682aa0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:30.927Z"
+    },
+    {
+      "id": "0cckga5qu",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e01f0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:32.929Z"
+    },
+    {
+      "id": "wf1srgenq",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e18a0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:34.933Z"
+    },
+    {
+      "id": "1hw25qrod",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e2140>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:36.937Z"
+    },
+    {
+      "id": "a8q9wtp34",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6829e0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:38.940Z"
+    },
+    {
+      "id": "n8uqflu14",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6834c0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:40.944Z"
+    },
+    {
+      "id": "a2fpil7vu",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e1270>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:42.948Z"
+    },
+    {
+      "id": "7emb3cmfw",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e0760>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:44.951Z"
+    },
+    {
+      "id": "9zptuln5i",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e29e0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:46.954Z"
+    },
+    {
+      "id": "qp1yd0obn",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e683f10>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:48.958Z"
+    },
+    {
+      "id": "wr06ssegc",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6826b0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:50.961Z"
+    },
+    {
+      "id": "g2r2t4syk",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e2890>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:52.965Z"
+    },
+    {
+      "id": "p7niz4k2i",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e0610>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:54.968Z"
+    },
+    {
+      "id": "2nuq2s769",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e1660>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:56.970Z"
+    },
+    {
+      "id": "zdrk6420t",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e3280>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:00:58.974Z"
+    },
+    {
+      "id": "xfjzvhwpt",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6834f0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:00.978Z"
+    },
+    {
+      "id": "0xwi64234",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e683910>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:02.982Z"
+    },
+    {
+      "id": "m2acbqgb3",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e04c0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:04.987Z"
+    },
+    {
+      "id": "9cjaw5tvv",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e26e0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:06.991Z"
+    },
+    {
+      "id": "oxk9a38xr",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e2bc0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:08.994Z"
+    },
+    {
+      "id": "bzomqgpml",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e683bb0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:10.998Z"
+    },
+    {
+      "id": "h1s1i16jz",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6829b0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:13.002Z"
+    },
+    {
+      "id": "7ryy28w67",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e2b60>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:15.006Z"
+    },
+    {
+      "id": "il8vexa8u",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e26b0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:17.011Z"
+    },
+    {
+      "id": "yebp5flmh",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e03a0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:19.014Z"
+    },
+    {
+      "id": "xxuwxdkoj",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e1840>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:21.017Z"
+    },
+    {
+      "id": "jb7ewu2zt",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6836a0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:23.022Z"
+    },
+    {
+      "id": "9umat0a4r",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e683640>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:25.024Z"
+    },
+    {
+      "id": "0w9o4hzaa",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e2260>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:27.028Z"
+    },
+    {
+      "id": "yo7tp43zd",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e1270>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:29.031Z"
+    },
+    {
+      "id": "mna8l6gee",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e0490>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:31.035Z"
+    },
+    {
+      "id": "45l9bguip",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e34c0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:33.039Z"
+    },
+    {
+      "id": "3nav21hu2",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e683520>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:35.042Z"
+    },
+    {
+      "id": "exnoe8w6a",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6824a0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:37.045Z"
+    },
+    {
+      "id": "x9y2sp445",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e0160>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:39.049Z"
+    },
+    {
+      "id": "uour9p5nr",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e1210>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:41.053Z"
+    },
+    {
+      "id": "ilaza53f6",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e2e60>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:43.058Z"
+    },
+    {
+      "id": "gyjla2s6i",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e683700>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:45.063Z"
+    },
+    {
+      "id": "uht8qcj04",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6827d0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:47.066Z"
+    },
+    {
+      "id": "5l7zfrfza",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e3160>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:49.070Z"
+    },
+    {
+      "id": "s1q6shamy",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e1240>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:51.073Z"
+    },
+    {
+      "id": "gc8ryvx1r",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e0730>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:53.077Z"
+    },
+    {
+      "id": "2suqy34mv",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e2a70>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:55.080Z"
+    },
+    {
+      "id": "toiqttgmm",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e6838b0>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:57.084Z"
+    },
+    {
+      "id": "ygaw0xpa6",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e683700>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:01:59.089Z"
+    },
+    {
+      "id": "qcth1cmer",
+      "scriptId": "ghx33pm6k",
+      "type": "stdout",
+      "message": "\u274c \u062e\u0637\u0623: HTTPConnectionPool(host='34.34.246.89', port=3000): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPConnection(host='34.34.246.89', port=3000) at 0x7f8d8e4e0670>, 'Connection to 34.34.246.89 timed out. (connect timeout=1)'))",
+      "timestamp": "2026-07-05T11:02:01.092Z"
+    },
+    {
+      "id": "1cufuqikd",
+      "scriptId": "ghx33pm6k",
+      "type": "system",
+      "message": "Le script a \u00e9t\u00e9 forc\u00e9 \u00e0 l'arr\u00eat (Aucun processus actif trouv\u00e9).",
+      "timestamp": "2026-07-05T11:02:02.881Z"
+    },
+    {
+      "id": "op4cvgd39",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "Traceback (most recent call last):",
+      "timestamp": "2026-07-05T11:02:02.884Z"
+    },
+    {
+      "id": "sfpzgwbpe",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/app/applet/hosted_scripts/keep_alive_new_2026.py\", line 112, in <module>",
+      "timestamp": "2026-07-05T11:02:02.887Z"
+    },
+    {
+      "id": "vpdah4cl2",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    asyncio.run(keep_alive_loop())",
+      "timestamp": "2026-07-05T11:02:02.888Z"
+    },
+    {
+      "id": "iomzcnz5x",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/asyncio/runners.py\", line 44, in run",
+      "timestamp": "2026-07-05T11:02:02.890Z"
+    },
+    {
+      "id": "scznqtupx",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    return loop.run_until_complete(main)",
+      "timestamp": "2026-07-05T11:02:02.892Z"
+    },
+    {
+      "id": "g2osxogue",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/asyncio/base_events.py\", line 636, in run_until_complete",
+      "timestamp": "2026-07-05T11:02:02.894Z"
+    },
+    {
+      "id": "91e48c31g",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    self.run_forever()",
+      "timestamp": "2026-07-05T11:02:02.895Z"
+    },
+    {
+      "id": "gmeukihjw",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/asyncio/base_events.py\", line 603, in run_forever",
+      "timestamp": "2026-07-05T11:02:02.897Z"
+    },
+    {
+      "id": "kdssy2put",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    self._run_once()",
+      "timestamp": "2026-07-05T11:02:02.899Z"
+    },
+    {
+      "id": "thbtm7tg8",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/asyncio/base_events.py\", line 1909, in _run_once",
+      "timestamp": "2026-07-05T11:02:02.901Z"
+    },
+    {
+      "id": "jhcgxqn1u",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    handle._run()",
+      "timestamp": "2026-07-05T11:02:02.903Z"
+    },
+    {
+      "id": "ghx4sbehx",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/asyncio/events.py\", line 80, in _run",
+      "timestamp": "2026-07-05T11:02:02.905Z"
+    },
+    {
+      "id": "bn8pybplv",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    self._context.run(self._callback, *self._args)",
+      "timestamp": "2026-07-05T11:02:02.907Z"
+    },
+    {
+      "id": "mcrlhtllk",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/app/applet/hosted_scripts/keep_alive_new_2026.py\", line 85, in keep_alive_loop",
+      "timestamp": "2026-07-05T11:02:02.909Z"
+    },
+    {
+      "id": "jxcpfcmpy",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    response = requests.get(target_url, timeout=1)",
+      "timestamp": "2026-07-05T11:02:02.911Z"
+    },
+    {
+      "id": "690kk7nqr",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/requests/api.py\", line 87, in get",
+      "timestamp": "2026-07-05T11:02:02.912Z"
+    },
+    {
+      "id": "g1oue3gxw",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    return request(\"get\", url, params=params, **kwargs)",
+      "timestamp": "2026-07-05T11:02:02.914Z"
+    },
+    {
+      "id": "jg6g8juin",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/requests/api.py\", line 71, in request",
+      "timestamp": "2026-07-05T11:02:02.917Z"
+    },
+    {
+      "id": "hzp69l8v7",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    return session.request(method=method, url=url, **kwargs)",
+      "timestamp": "2026-07-05T11:02:02.918Z"
+    },
+    {
+      "id": "mywmkw42o",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/requests/sessions.py\", line 651, in request",
+      "timestamp": "2026-07-05T11:02:02.920Z"
+    },
+    {
+      "id": "c62xgp9og",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    resp = self.send(prep, **send_kwargs)",
+      "timestamp": "2026-07-05T11:02:02.922Z"
+    },
+    {
+      "id": "j4dz4j016",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/requests/sessions.py\", line 784, in send",
+      "timestamp": "2026-07-05T11:02:02.923Z"
+    },
+    {
+      "id": "awcwfzedn",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    r = adapter.send(request, **kwargs)",
+      "timestamp": "2026-07-05T11:02:02.926Z"
+    },
+    {
+      "id": "wzwmme9fs",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/requests/adapters.py\", line 696, in send",
+      "timestamp": "2026-07-05T11:02:02.928Z"
+    },
+    {
+      "id": "bxcol4rr5",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    resp = conn.urlopen(",
+      "timestamp": "2026-07-05T11:02:02.929Z"
+    },
+    {
+      "id": "wh8bkfm72",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/urllib3/connectionpool.py\", line 788, in urlopen",
+      "timestamp": "2026-07-05T11:02:02.935Z"
+    },
+    {
+      "id": "95onhzgxm",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    response = self._make_request(",
+      "timestamp": "2026-07-05T11:02:02.937Z"
+    },
+    {
+      "id": "3y1m6ehb9",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/urllib3/connectionpool.py\", line 493, in _make_request",
+      "timestamp": "2026-07-05T11:02:02.939Z"
+    },
+    {
+      "id": "5flp7qd88",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    conn.request(",
+      "timestamp": "2026-07-05T11:02:02.941Z"
+    },
+    {
+      "id": "or3xv9d33",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/urllib3/connection.py\", line 500, in request",
+      "timestamp": "2026-07-05T11:02:02.943Z"
+    },
+    {
+      "id": "fzd205pfv",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    self.endheaders()",
+      "timestamp": "2026-07-05T11:02:02.945Z"
+    },
+    {
+      "id": "av3qsq2ze",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/http/client.py\", line 1298, in endheaders",
+      "timestamp": "2026-07-05T11:02:02.947Z"
+    },
+    {
+      "id": "bfpt3qrt4",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    self._send_output(message_body, encode_chunked=encode_chunked)",
+      "timestamp": "2026-07-05T11:02:02.948Z"
+    },
+    {
+      "id": "8royonjpb",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/http/client.py\", line 1058, in _send_output",
+      "timestamp": "2026-07-05T11:02:02.950Z"
+    },
+    {
+      "id": "tih8sz2od",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    self.send(msg)",
+      "timestamp": "2026-07-05T11:02:02.952Z"
+    },
+    {
+      "id": "rdddkwu02",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/lib/python3.10/http/client.py\", line 996, in send",
+      "timestamp": "2026-07-05T11:02:02.954Z"
+    },
+    {
+      "id": "mt3zs2h36",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    self.connect()",
+      "timestamp": "2026-07-05T11:02:02.955Z"
+    },
+    {
+      "id": "iacob4gal",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/urllib3/connection.py\", line 331, in connect",
+      "timestamp": "2026-07-05T11:02:02.957Z"
+    },
+    {
+      "id": "7g0vlf8mq",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    self.sock = self._new_conn()",
+      "timestamp": "2026-07-05T11:02:02.959Z"
+    },
+    {
+      "id": "lokyfmiza",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/urllib3/connection.py\", line 204, in _new_conn",
+      "timestamp": "2026-07-05T11:02:02.962Z"
+    },
+    {
+      "id": "omok38m8a",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    sock = connection.create_connection(",
+      "timestamp": "2026-07-05T11:02:02.964Z"
+    },
+    {
+      "id": "ddo3coy9t",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "  File \"/usr/local/lib/python3.10/dist-packages/urllib3/util/connection.py\", line 73, in create_connection",
+      "timestamp": "2026-07-05T11:02:02.967Z"
+    },
+    {
+      "id": "2ehu0b4zj",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "    sock.connect(sa)",
+      "timestamp": "2026-07-05T11:02:02.969Z"
+    },
+    {
+      "id": "o7ml24ly6",
+      "scriptId": "ghx33pm6k",
+      "type": "stderr",
+      "message": "KeyboardInterrupt",
+      "timestamp": "2026-07-05T11:02:02.971Z"
+    },
+    {
+      "id": "dvqdg4l92",
+      "scriptId": "ghx33pm6k",
+      "type": "system",
+      "message": "Script interrompu par le signal SIGINT",
+      "timestamp": "2026-07-05T11:02:02.975Z"
+    },
+    {
+      "id": "g0chywdl5",
+      "scriptId": "xstv68wik",
+      "type": "system",
+      "message": "D\u00e9marrage de l'ex\u00e9cution de flask+bot555.py",
+      "timestamp": "2026-07-05T11:10:27.926Z"
+    },
+    {
+      "id": "h9qene7eb",
+      "scriptId": "xstv68wik",
+      "type": "stderr",
+      "message": "Traceback (most recent call last):",
+      "timestamp": "2026-07-05T11:10:37.760Z"
+    },
+    {
+      "id": "qaeepvy5t",
+      "scriptId": "xstv68wik",
+      "type": "stderr",
+      "message": "  File \"/app/applet/hosted_scripts/flask+bot555.py\", line 7, in <module>",
+      "timestamp": "2026-07-05T11:10:37.762Z"
+    },
+    {
+      "id": "59jd15fz9",
+      "scriptId": "xstv68wik",
+      "type": "stderr",
+      "message": "    from aiogram.dispatcher import FSMContext",
+      "timestamp": "2026-07-05T11:10:37.765Z"
+    },
+    {
+      "id": "yp7qw8nd6",
+      "scriptId": "xstv68wik",
+      "type": "stderr",
+      "message": "ImportError: cannot import name 'FSMContext' from 'aiogram.dispatcher' (/usr/local/lib/python3.10/dist-packages/aiogram/dispatcher/__init__.py)",
+      "timestamp": "2026-07-05T11:10:37.767Z"
+    },
+    {
+      "id": "l1qe96epv",
+      "scriptId": "xstv68wik",
+      "type": "system",
+      "message": "Script termin\u00e9 avec le code de sortie 1",
+      "timestamp": "2026-07-05T11:10:38.166Z"
+    }
+  ],
+  "config": {
+    "allowedUsers": [],
+    "autoInstallGlobal": true,
+    "securityPin": "796435"
+  }
+}
