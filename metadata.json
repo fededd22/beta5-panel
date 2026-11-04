@@ -1,0 +1,8 @@
+{
+  "name": "Remix Hébergeur de Scripts Python Telegram Bot",
+  "description": "Une interface pour héberger, gérer, éditer et exécuter des scripts Python via un bot Telegram sécurisé avec installation automatique des dépendances pip.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
