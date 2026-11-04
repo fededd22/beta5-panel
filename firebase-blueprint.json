@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "Script": {
+      "title": "Script",
+      "description": "An uploaded Python script",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "size": { "type": "integer" },
+        "status": { "type": "string", "enum": ["idle", "running", "error"] },
+        "lastRun": { "type": "string", "format": "date-time" },
+        "autoInstall": { "type": "boolean" }
+      },
+      "required": ["id", "name", "content", "createdAt", "updatedAt", "size", "status", "autoInstall"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "Execution log from a Python script",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "scriptId": { "type": "string" },
+        "type": { "type": "string", "enum": ["stdout", "stderr", "system"] },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "scriptId", "type", "message", "timestamp"]
+    },
+    "BotConfig": {
+      "title": "BotConfig",
+      "description": "Configuration for the Telegram Bot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "allowedUsers": { "type": "array" },
+        "autoInstallGlobal": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "allowedUsers", "autoInstallGlobal", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/scripts/{scriptId}": {
+      "schema": "Script",
+      "description": "Collection of hosted Python scripts"
+    },
+    "/scripts/{scriptId}/logs/{logId}": {
+      "schema": "Log",
+      "description": "Execution logs for a specific script"
+    },
+    "/config/{configId}": {
+      "schema": "BotConfig",
+      "description": "Bot settings document"
+    }
+  }
+}
